@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.angular/
+.nx/
+.turbo/
+.env
+.env.local
+*.log
+tmp/
+uploads/
+apps/api/generated/

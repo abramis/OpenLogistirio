@@ -1,0 +1,410 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ACCOUNTING_OFFICE_ADMIN
+  ACCOUNTANT
+  ASSISTANT
+  CLIENT_READONLY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum DocumentType {
+  SALES_INVOICE
+  PURCHASE_INVOICE
+  CREDIT_NOTE
+  RETAIL_RECEIPT
+}
+
+enum MyDataStatus {
+  DRAFT
+  READY_TO_SEND
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum TransmissionStatus {
+  PREPARED
+  SENT
+  FAILED
+}
+
+enum ClientEntityType {
+  COMPANY
+  FREELANCER
+  SOLE_PROPRIETOR
+  NON_PROFIT
+  OTHER
+}
+
+enum MyDataTransmissionMode {
+  ACCOUNTING_OFFICE_AUTHORIZED
+  OWN_API_CREDENTIALS_ENV_REF
+  MANUAL_UPLOAD
+  NOT_CONFIGURED
+}
+
+enum ObligationType {
+  VAT_RETURN
+  MYDATA_REVIEW
+  WITHHOLDING_TAX
+  INCOME_TAX_PREP
+  PAYROLL_REVIEW
+  CUSTOM
+}
+
+enum ObligationStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CLIENT
+  READY_TO_SUBMIT
+  SUBMITTED
+  CANCELLED
+}
+
+enum ObligationRecurrence {
+  NONE
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum FixedAssetCategory {
+  EQUIPMENT
+  SOFTWARE
+  VEHICLE
+  FURNITURE
+  BUILDING
+  OTHER
+}
+
+enum FixedAssetStatus {
+  ACTIVE
+  SOLD
+  SCRAPPED
+}
+
+enum CounterpartyType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+}
+
+enum ImportBatchType {
+  DOCUMENTS_CSV
+}
+
+enum ImportBatchStatus {
+  PREVIEW
+  COMPLETED
+  FAILED
+}
+
+enum DeclarationWorkpaperType {
+  VAT_RETURN
+  MYDATA_RECONCILIATION
+  WITHHOLDING_TAX
+  INCOME_TAX_PREP
+  PAYROLL_REVIEW
+}
+
+enum DeclarationWorkpaperStatus {
+  DRAFT
+  READY
+  SUBMITTED
+  ARCHIVED
+}
+
+model AccountingOffice {
+  id        String   @id @default(cuid())
+  name      String
+  vatNumber String?  @db.VarChar(9)
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                 User[]
+  clientCompanies       ClientCompany[]
+  documents             Document[]
+  fixedAssets           FixedAsset[]
+  obligations           OfficeObligation[]
+  counterparties        Counterparty[]
+  importBatches         ImportBatch[]
+  declarationWorkpapers DeclarationWorkpaper[]
+  auditLogs             AuditLog[]
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  accountingOfficeId String
+  email              String   @unique
+  passwordHash       String
+  fullName           String
+  role               UserRole
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  accountingOffice    AccountingOffice   @relation(fields: [accountingOfficeId], references: [id])
+  auditLogs           AuditLog[]
+  assignedObligations OfficeObligation[] @relation("AssignedObligations")
+
+  @@index([accountingOfficeId])
+}
+
+model ClientCompany {
+  id                  String                 @id @default(cuid())
+  accountingOfficeId  String
+  legalName           String
+  tradeName           String?
+  entityType          ClientEntityType       @default(COMPANY)
+  professionLabel     String?
+  vatNumber           String                 @db.VarChar(9)
+  taxOffice           String?
+  activityCodes       Json?
+  address             String?
+  email               String?
+  phone               String?
+  vatRegime           String?
+  accountingCategory  String?
+  myDataMode          MyDataTransmissionMode @default(ACCOUNTING_OFFICE_AUTHORIZED)
+  myDataAuthorized    Boolean                @default(false)
+  myDataCredentialRef String?
+  fiscalYearStart     Int                    @default(1)
+  fiscalYearEnd       Int                    @default(12)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  deletedAt           DateTime?
+
+  accountingOffice      AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  documents             Document[]
+  fixedAssets           FixedAsset[]
+  obligations           OfficeObligation[]
+  counterparties        Counterparty[]
+  importBatches         ImportBatch[]
+  declarationWorkpapers DeclarationWorkpaper[]
+
+  @@unique([accountingOfficeId, vatNumber])
+  @@index([accountingOfficeId, deletedAt])
+}
+
+model Counterparty {
+  id                 String           @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  type               CounterpartyType
+  name               String
+  vatNumber          String?          @db.VarChar(20)
+  country            String           @default("GR") @db.VarChar(2)
+  taxOffice          String?
+  address            String?
+  email              String?
+  phone              String?
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@index([accountingOfficeId, clientCompanyId, type])
+  @@index([clientCompanyId, vatNumber])
+}
+
+model ImportBatch {
+  id                 String            @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  type               ImportBatchType
+  status             ImportBatchStatus
+  fileName           String?
+  totalRows          Int               @default(0)
+  successfulRows     Int               @default(0)
+  failedRows         Int               @default(0)
+  errorReport        Json?
+  createdAt          DateTime          @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@index([accountingOfficeId, createdAt])
+  @@index([clientCompanyId, createdAt])
+}
+
+model DeclarationWorkpaper {
+  id                 String                     @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  type               DeclarationWorkpaperType
+  title              String
+  periodYear         Int
+  periodMonth        Int?
+  status             DeclarationWorkpaperStatus @default(DRAFT)
+  totals             Json
+  notes              String?
+  generatedAt        DateTime                   @default(now())
+  submittedAt        DateTime?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@unique([clientCompanyId, type, periodYear, periodMonth], map: "DeclWorkpaper_period_key")
+  @@index([accountingOfficeId, type, status], map: "DeclWorkpaper_office_type_status_idx")
+  @@index([clientCompanyId, periodYear, periodMonth], map: "DeclWorkpaper_client_period_idx")
+}
+
+model FixedAsset {
+  id                        String             @id @default(cuid())
+  accountingOfficeId        String
+  clientCompanyId           String
+  code                      String
+  description               String
+  category                  FixedAssetCategory @default(OTHER)
+  acquisitionDate           DateTime
+  depreciationStartDate     DateTime
+  acquisitionDocumentNumber String?
+  supplierName              String?
+  netValue                  Decimal            @db.Decimal(12, 2)
+  vatAmount                 Decimal            @db.Decimal(12, 2)
+  totalValue                Decimal            @db.Decimal(12, 2)
+  depreciationRate          Decimal            @db.Decimal(5, 2)
+  accumulatedDepreciation   Decimal            @default(0) @db.Decimal(12, 2)
+  status                    FixedAssetStatus   @default(ACTIVE)
+  disposalDate              DateTime?
+  notes                     String?
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+
+  accountingOffice    AccountingOffice              @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany       ClientCompany                 @relation(fields: [clientCompanyId], references: [id])
+  depreciationEntries FixedAssetDepreciationEntry[]
+
+  @@unique([clientCompanyId, code])
+  @@index([accountingOfficeId, clientCompanyId, status])
+}
+
+model FixedAssetDepreciationEntry {
+  id                String   @id @default(cuid())
+  fixedAssetId      String
+  fiscalYear        Int
+  amount            Decimal  @db.Decimal(12, 2)
+  accumulatedAmount Decimal  @db.Decimal(12, 2)
+  bookValueAfter    Decimal  @db.Decimal(12, 2)
+  posted            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  fixedAsset FixedAsset @relation(fields: [fixedAssetId], references: [id])
+
+  @@unique([fixedAssetId, fiscalYear])
+  @@index([fixedAssetId, fiscalYear])
+}
+
+model OfficeObligation {
+  id                 String               @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  assignedUserId     String?
+  type               ObligationType
+  title              String
+  periodYear         Int
+  periodMonth        Int?
+  dueDate            DateTime
+  status             ObligationStatus     @default(OPEN)
+  recurrence         ObligationRecurrence @default(NONE)
+  notes              String?
+  completedAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  assignedUser     User?            @relation("AssignedObligations", fields: [assignedUserId], references: [id])
+
+  @@unique([clientCompanyId, type, periodYear, periodMonth])
+  @@index([accountingOfficeId, status, dueDate])
+  @@index([clientCompanyId, dueDate])
+  @@index([assignedUserId])
+}
+
+model Document {
+  id                    String       @id @default(cuid())
+  accountingOfficeId    String
+  clientCompanyId       String
+  documentType          DocumentType
+  series                String?
+  documentNumber        String
+  issueDate             DateTime
+  counterpartyName      String?
+  counterpartyVatNumber String?      @db.VarChar(20)
+  netAmount             Decimal      @db.Decimal(12, 2)
+  vatAmount             Decimal      @db.Decimal(12, 2)
+  totalAmount           Decimal      @db.Decimal(12, 2)
+  vatCategory           String
+  myDataStatus          MyDataStatus @default(DRAFT)
+  myDataMark            String?
+  myDataUid             String?
+  myDataQrUrl           String?
+  myDataXmlPreview      String?      @db.LongText
+  classificationStatus  String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  deletedAt             DateTime?
+
+  accountingOffice     AccountingOffice      @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany        ClientCompany         @relation(fields: [clientCompanyId], references: [id])
+  transmissionAttempts TransmissionAttempt[]
+
+  @@index([accountingOfficeId, clientCompanyId, issueDate])
+  @@index([accountingOfficeId, myDataStatus])
+}
+
+model TransmissionAttempt {
+  id              String             @id @default(cuid())
+  documentId      String
+  provider        String
+  status          TransmissionStatus
+  requestPayload  String             @db.LongText
+  responsePayload Json?
+  errorCode       String?
+  errorMessage    String?
+  createdAt       DateTime           @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@index([documentId, createdAt])
+}
+
+model AuditLog {
+  id                 String      @id @default(cuid())
+  accountingOfficeId String
+  userId             String?
+  action             AuditAction
+  entityType         String
+  entityId           String
+  oldValue           Json?
+  newValue           Json?
+  createdAt          DateTime    @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  user             User?            @relation(fields: [userId], references: [id])
+
+  @@index([accountingOfficeId, entityType, entityId])
+  @@index([userId])
+}

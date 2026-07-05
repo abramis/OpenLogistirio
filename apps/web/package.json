@@ -1,0 +1,38 @@
+{
+  "name": "@open-logistirio/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open Logistirio web client",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "dev": "ng serve --host 0.0.0.0 --port 4200",
+    "build": "ng build",
+    "test": "ng test --watch=false --browsers=ChromeHeadless",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@angular/animations": "latest",
+    "@angular/common": "latest",
+    "@angular/compiler": "latest",
+    "@angular/core": "latest",
+    "@angular/forms": "latest",
+    "@angular/platform-browser": "latest",
+    "@angular/router": "latest",
+    "rxjs": "latest",
+    "tslib": "latest",
+    "zone.js": "latest"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "latest",
+    "@angular/cli": "latest",
+    "@angular/compiler-cli": "latest",
+    "@types/jasmine": "latest",
+    "jasmine-core": "latest",
+    "karma": "latest",
+    "karma-chrome-launcher": "latest",
+    "karma-coverage": "latest",
+    "karma-jasmine": "latest",
+    "karma-jasmine-html-reporter": "latest",
+    "typescript": "latest"
+  }
+}

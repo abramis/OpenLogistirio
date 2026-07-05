@@ -1,0 +1,32 @@
+{
+  "name": "open-logistirio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source accounting-office ERP for Greece.",
+  "license": "AGPL-3.0-or-later",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -ws --if-present",
+    "build": "npm run build -ws --if-present",
+    "test": "npm run test -ws --if-present",
+    "lint": "npm run lint -ws --if-present",
+    "format": "prettier --write \"**/*.{ts,js,json,md,html,scss,yml,yaml}\"",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "latest",
+    "@typescript-eslint/parser": "latest",
+    "eslint": "latest",
+    "eslint-config-prettier": "latest",
+    "prettier": "latest",
+    "typescript": "latest"
+  },
+  "engines": {
+    "node": ">=22.22.3",
+    "npm": ">=10.0.0"
+  }
+}
