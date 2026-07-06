@@ -150,6 +150,7 @@ import {
             <tr>
               <th>Παραστατικό</th>
               <th>Εταιρεία</th>
+              <th>Κίνηση</th>
               <th>Αντισυμβαλλόμενος</th>
               <th>Ημερ.</th>
               <th class="tr">Καθαρή</th>
@@ -169,6 +170,10 @@ import {
                 {{ document.clientCompany.legalName }}
                 <small>{{ document.clientCompany.vatNumber }}</small>
                 <small>{{ companyMyDataLabel(document) }}</small>
+              </td>
+              <td>
+                {{ movementLabel(document.movementCode) }}
+                <small>{{ journalLabel(document.journalCode) }}</small>
               </td>
               <td>
                 {{ document.counterpartyName || '-' }}
@@ -496,6 +501,8 @@ export class DocumentsListPageComponent {
       'issueDate',
       'company',
       'companyVat',
+      'movementCode',
+      'journalCode',
       'counterparty',
       'counterpartyVat',
       'net',
@@ -512,6 +519,8 @@ export class DocumentsListPageComponent {
       document.issueDate,
       document.clientCompany.legalName,
       document.clientCompany.vatNumber,
+      document.movementCode ?? '',
+      document.journalCode ?? '',
       document.counterpartyName ?? '',
       document.counterpartyVatNumber ?? '',
       document.netAmount,
@@ -634,6 +643,27 @@ export class DocumentsListPageComponent {
     };
 
     return labels[mode ?? ''] ?? 'AADE: αρρύθμιστο';
+  }
+
+  movementLabel(code?: string | null): string {
+    const labels: Record<string, string> = {
+      SALE_INVOICE: 'Πώληση',
+      PURCHASE_INVOICE: 'Αγορά / δαπάνη',
+      CREDIT_NOTE: 'Πιστωτικό',
+    };
+
+    return code ? (labels[code] ?? code) : '-';
+  }
+
+  journalLabel(code?: string | null): string {
+    const labels: Record<string, string> = {
+      SALES: 'Πωλήσεων',
+      PURCHASES: 'Αγορών',
+      CASH_BANK: 'Ταμείο / τράπεζες',
+      GENERAL: 'Γενικό',
+    };
+
+    return code ? (labels[code] ?? code) : '-';
   }
 
   statusLabel(status: string): string {

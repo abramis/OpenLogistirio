@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { combineLatest, map } from 'rxjs';
 import { ClientCompany, CompaniesApiService } from '../../core/api/companies-api.service';
 import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-api.service';
+import { ObligationsApiService, OfficeObligation } from '../../core/api/obligations-api.service';
 
 interface CockpitMetric {
   label: string;
@@ -16,8 +17,11 @@ interface CockpitMetric {
 interface CockpitVm {
   metrics: CockpitMetric[];
   monthNet: number;
+  monthExpenseNet: number;
   monthVat: number;
   payableVat: number;
+  overdueObligations: OfficeObligation[];
+  dueSoonObligations: OfficeObligation[];
   failedDocuments: DocumentListItem[];
   pendingDocuments: DocumentListItem[];
   clientsMissingMyData: ClientCompany[];
@@ -140,7 +144,7 @@ interface CockpitVm {
               <p class="card-subtitle">Σύνοψη παραστατικών</p>
             </div>
             <a class="btn btn-ghost btn-sm" routerLink="/vat-book">
-              Βιβλίο ΦΠΑ <span class="material-symbols-outlined">arrow_forward</span>
+              Βιβλία <span class="material-symbols-outlined">arrow_forward</span>
             </a>
           </div>
           <div class="card-body">
@@ -148,6 +152,10 @@ interface CockpitVm {
               <div class="month-row">
                 <dt>Καθαρή αξία</dt>
                 <dd>{{ vm.monthNet | number: '1.2-2' }} €</dd>
+              </div>
+              <div class="month-row">
+                <dt>Καθαρή αξία εξόδων</dt>
+                <dd>{{ vm.monthExpenseNet | number: '1.2-2' }} €</dd>
               </div>
               <div class="month-row">
                 <dt>ΦΠΑ εκροών</dt>
@@ -261,10 +269,86 @@ interface CockpitVm {
             </a>
             <a class="quick-link" routerLink="/vat-book">
               <span class="material-symbols-outlined ql-icon">calculate</span>
-              <span>Βιβλίο ΦΠΑ</span>
+              <span>Βιβλία</span>
+              <span class="material-symbols-outlined ql-arr">chevron_right</span>
+            </a>
+            <a class="quick-link" routerLink="/obligations">
+              <span class="material-symbols-outlined ql-icon">event_available</span>
+              <span>Υποχρεώσεις</span>
               <span class="material-symbols-outlined ql-arr">chevron_right</span>
             </a>
           </nav>
+        </article>
+      </section>
+
+      <section class="dash-row">
+        <article class="card flex-1">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">
+                <span class="material-symbols-outlined">event_busy</span>
+                Ληξιπρόθεσμα
+              </h2>
+              <p class="card-subtitle">Υποχρεώσεις που έχουν περάσει την προθεσμία</p>
+            </div>
+            <a class="btn btn-ghost btn-sm" routerLink="/obligations">Άνοιγμα</a>
+          </div>
+          <div
+            class="card-body obligation-list"
+            *ngIf="vm.overdueObligations.length > 0; else noOverdue"
+          >
+            <a
+              class="obligation-item overdue-item"
+              routerLink="/obligations"
+              *ngFor="let obligation of vm.overdueObligations"
+            >
+              <strong>{{ obligation.title }}</strong>
+              <small
+                >{{ obligation.clientCompany?.legalName || '-' }} ·
+                {{ obligation.dueDate | date: 'dd/MM/yyyy' }}</small
+              >
+            </a>
+          </div>
+          <ng-template #noOverdue>
+            <div class="empty-state compact">
+              <span class="material-symbols-outlined">check_circle</span>
+              Δεν υπάρχουν ληξιπρόθεσμα.
+            </div>
+          </ng-template>
+        </article>
+
+        <article class="card flex-1">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">
+                <span class="material-symbols-outlined">event_upcoming</span>
+                Επόμενες 7 ημέρες
+              </h2>
+              <p class="card-subtitle">Άμεσο ημερολόγιο εργασιών</p>
+            </div>
+          </div>
+          <div
+            class="card-body obligation-list"
+            *ngIf="vm.dueSoonObligations.length > 0; else noDueSoon"
+          >
+            <a
+              class="obligation-item"
+              routerLink="/obligations"
+              *ngFor="let obligation of vm.dueSoonObligations"
+            >
+              <strong>{{ obligation.title }}</strong>
+              <small
+                >{{ obligation.clientCompany?.legalName || '-' }} ·
+                {{ obligation.dueDate | date: 'dd/MM/yyyy' }}</small
+              >
+            </a>
+          </div>
+          <ng-template #noDueSoon>
+            <div class="empty-state compact">
+              <span class="material-symbols-outlined">task_alt</span>
+              Δεν υπάρχουν άμεσες προθεσμίες.
+            </div>
+          </ng-template>
         </article>
       </section>
     </ng-container>
@@ -452,6 +536,36 @@ interface CockpitVm {
         color: var(--ok);
       }
 
+      .obligation-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .obligation-item {
+        display: grid;
+        gap: 3px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .obligation-item:hover {
+        background: var(--surface-2);
+      }
+
+      .obligation-item small {
+        color: var(--muted);
+      }
+
+      .overdue-item {
+        border-color: var(--err-bd);
+        background: var(--err-bg);
+      }
+
+      .compact {
+        padding: 14px;
+      }
+
       /* Table alignment */
       .tr {
         text-align: right;
@@ -516,9 +630,14 @@ interface CockpitVm {
 export class DashboardPageComponent {
   private readonly companiesApi = inject(CompaniesApiService);
   private readonly documentsApi = inject(DocumentsApiService);
+  private readonly obligationsApi = inject(ObligationsApiService);
 
-  readonly vm$ = combineLatest([this.companiesApi.findAll(), this.documentsApi.findAll()]).pipe(
-    map(([companies, documents]) => toCockpitVm(companies, documents)),
+  readonly vm$ = combineLatest([
+    this.companiesApi.findAll(),
+    this.documentsApi.findAll(),
+    this.obligationsApi.findAll(),
+  ]).pipe(
+    map(([companies, documents, obligations]) => toCockpitVm(companies, documents, obligations)),
   );
 
   documentTypeLabel(type: string): string {
@@ -545,20 +664,39 @@ export class DashboardPageComponent {
   }
 }
 
-function toCockpitVm(companies: ClientCompany[], documents: DocumentListItem[]): CockpitVm {
+function toCockpitVm(
+  companies: ClientCompany[],
+  documents: DocumentListItem[],
+  obligations: OfficeObligation[],
+): CockpitVm {
   const month = new Date().toISOString().slice(0, 7);
+  const today = new Date().toISOString().slice(0, 10);
+  const nextWeek = addDaysIso(7);
   const monthDocuments = documents.filter((document) => document.issueDate.startsWith(month));
   const failedDocuments = documents.filter((document) => document.myDataStatus === 'FAILED');
   const pendingDocuments = documents.filter((document) =>
     ['DRAFT', 'READY_TO_SEND'].includes(document.myDataStatus),
   );
   const clientsMissingMyData = companies.filter(needsMyDataSetup);
-  const salesVat = monthDocuments
-    .filter((document) => document.documentType !== 'PURCHASE_INVOICE')
-    .reduce((sum, document) => sum + Number(document.vatAmount || 0), 0);
-  const purchasesVat = monthDocuments
-    .filter((document) => document.documentType === 'PURCHASE_INVOICE')
-    .reduce((sum, document) => sum + Number(document.vatAmount || 0), 0);
+  const openObligations = obligations.filter(
+    (obligation) => !['SUBMITTED', 'CANCELLED'].includes(obligation.status),
+  );
+  const overdueObligations = openObligations.filter(
+    (obligation) => obligation.dueDate.slice(0, 10) < today,
+  );
+  const dueSoonObligations = openObligations.filter(
+    (obligation) => obligation.dueDate.slice(0, 10) <= nextWeek,
+  );
+  const salesDocuments = monthDocuments.filter((document) => !isExpenseDocument(document));
+  const purchaseDocuments = monthDocuments.filter(isExpenseDocument);
+  const salesVat = salesDocuments.reduce(
+    (sum, document) => sum + signedAmount(document, 'vatAmount'),
+    0,
+  );
+  const purchasesVat = purchaseDocuments.reduce(
+    (sum, document) => sum + signedAmount(document, 'vatAmount'),
+    0,
+  );
 
   return {
     metrics: [
@@ -577,20 +715,49 @@ function toCockpitVm(companies: ClientCompany[], documents: DocumentListItem[]):
         tone: failedDocuments.length ? 'danger' : 'ok',
       },
       {
-        label: 'AADE setup λείπει',
-        value: clientsMissingMyData.length,
-        icon: 'warning',
-        tone: clientsMissingMyData.length ? 'warning' : 'ok',
+        label: 'Ληξιπρόθεσμα',
+        value: overdueObligations.length,
+        icon: 'event_busy',
+        tone: overdueObligations.length ? 'danger' : 'ok',
       },
     ],
-    monthNet: monthDocuments.reduce((sum, document) => sum + Number(document.netAmount || 0), 0),
-    monthVat: monthDocuments.reduce((sum, document) => sum + Number(document.vatAmount || 0), 0),
+    monthNet: salesDocuments.reduce(
+      (sum, document) => sum + signedAmount(document, 'netAmount'),
+      0,
+    ),
+    monthExpenseNet: purchaseDocuments.reduce(
+      (sum, document) => sum + signedAmount(document, 'netAmount'),
+      0,
+    ),
+    monthVat: salesVat,
     payableVat: salesVat - purchasesVat,
+    overdueObligations: overdueObligations.slice(0, 5),
+    dueSoonObligations: dueSoonObligations.slice(0, 5),
     failedDocuments: failedDocuments.slice(0, 5),
     pendingDocuments: pendingDocuments.slice(0, 5),
     clientsMissingMyData: clientsMissingMyData.slice(0, 5),
     recentDocuments: documents.slice(0, 6),
   };
+}
+
+function isExpenseDocument(document: DocumentListItem): boolean {
+  return (
+    document.movementCode === 'PURCHASE_INVOICE' || document.documentType === 'PURCHASE_INVOICE'
+  );
+}
+
+function signedAmount(
+  document: DocumentListItem,
+  field: 'netAmount' | 'vatAmount' | 'totalAmount',
+): number {
+  const sign = document.documentType === 'CREDIT_NOTE' ? -1 : 1;
+  return Number(document[field] || 0) * sign;
+}
+
+function addDaysIso(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function needsMyDataSetup(company: ClientCompany): boolean {

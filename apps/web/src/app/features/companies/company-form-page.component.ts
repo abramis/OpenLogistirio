@@ -2,7 +2,12 @@ import { NgIf } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-api.service';
+import { finalize } from 'rxjs';
+import {
+  AadeRegistryCompanyLookup,
+  CompaniesApiService,
+  CompanyPayload,
+} from '../../core/api/companies-api.service';
 
 @Component({
   selector: 'ol-company-form-page',
@@ -20,8 +25,47 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
       </a>
     </section>
 
+    <nav class="form-tabs" aria-label="Ενότητες πελάτη">
+      <button
+        type="button"
+        class="tab-button"
+        [class.active]="activeTab === 'identity'"
+        (click)="setActiveTab('identity')"
+      >
+        <span class="material-symbols-outlined">badge</span>
+        Ταυτότητα
+      </button>
+      <button
+        type="button"
+        class="tab-button"
+        [class.active]="activeTab === 'tax'"
+        (click)="setActiveTab('tax')"
+      >
+        <span class="material-symbols-outlined">account_balance</span>
+        Φορολογικά
+      </button>
+      <button
+        type="button"
+        class="tab-button"
+        [class.active]="activeTab === 'mydata'"
+        (click)="setActiveTab('mydata')"
+      >
+        <span class="material-symbols-outlined">cloud_sync</span>
+        myDATA
+      </button>
+      <button
+        type="button"
+        class="tab-button"
+        [class.active]="activeTab === 'contact'"
+        (click)="setActiveTab('contact')"
+      >
+        <span class="material-symbols-outlined">contact_mail</span>
+        Επικοινωνία
+      </button>
+    </nav>
+
     <form [formGroup]="form" (ngSubmit)="submit()" class="form-grid">
-      <fieldset class="form-section">
+      <fieldset class="form-section" *ngIf="activeTab === 'identity'">
         <legend class="section-legend">
           <span class="material-symbols-outlined">badge</span>
           Ταυτότητα πελάτη
@@ -53,21 +97,34 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
         </label>
       </fieldset>
 
-      <fieldset class="form-section">
+      <fieldset class="form-section" *ngIf="activeTab === 'tax'">
         <legend class="section-legend">
           <span class="material-symbols-outlined">account_balance</span>
           Φορολογικά στοιχεία
         </legend>
-        <label class="field">
+        <div class="field wide">
           <span class="field-label">ΑΦΜ <span class="req">*</span></span>
-          <input formControlName="vatNumber" inputmode="numeric" placeholder="9 ψηφία" />
+          <div class="lookup-row">
+            <input formControlName="vatNumber" inputmode="numeric" placeholder="9 ψηφία" />
+            <button
+              type="button"
+              class="btn btn-secondary lookup-button"
+              [disabled]="form.controls.vatNumber.invalid || isLookingUpAade"
+              (click)="lookupAadeRegistry()"
+            >
+              <span class="material-symbols-outlined">manage_search</span>
+              {{ isLookingUpAade ? 'Ανάκτηση...' : 'Ανάκτηση από ΑΑΔΕ' }}
+            </button>
+          </div>
           <span class="field-error" *ngIf="showError('vatNumber', 'required')"
             >Το ΑΦΜ είναι υποχρεωτικό.</span
           >
           <span class="field-error" *ngIf="showError('vatNumber', 'pattern')"
             >Το ΑΦΜ πρέπει να έχει 9 ψηφία.</span
           >
-        </label>
+          <span class="field-success" *ngIf="aadeLookupStatus">{{ aadeLookupStatus }}</span>
+          <span class="field-error" *ngIf="aadeLookupError">{{ aadeLookupError }}</span>
+        </div>
         <label class="field">
           <span class="field-label">ΔΟΥ</span>
           <input formControlName="taxOffice" placeholder="π.χ. Α΄ Αθηνών" />
@@ -118,7 +175,7 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
         </label>
       </fieldset>
 
-      <fieldset class="form-section">
+      <fieldset class="form-section" *ngIf="activeTab === 'mydata'">
         <legend class="section-legend">
           <span class="material-symbols-outlined">cloud_sync</span>
           Ρύθμιση AADE myDATA
@@ -151,7 +208,7 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
         </p>
       </fieldset>
 
-      <fieldset class="form-section">
+      <fieldset class="form-section" *ngIf="activeTab === 'contact'">
         <legend class="section-legend">
           <span class="material-symbols-outlined">contact_mail</span>
           Επικοινωνία
@@ -187,6 +244,40 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
         display: flex;
         flex-direction: column;
         gap: 16px;
+      }
+
+      .form-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .tab-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 40px;
+        margin: 0 0 -1px;
+        border: 1px solid transparent;
+        border-bottom-color: var(--border);
+        background: transparent;
+        color: var(--text-2);
+        padding: 0 12px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tab-button.active {
+        border-color: var(--border);
+        border-bottom-color: var(--surface);
+        border-radius: 8px 8px 0 0;
+        background: var(--surface);
+        color: var(--primary);
+      }
+      .tab-button .material-symbols-outlined {
+        font-size: 18px;
       }
 
       .form-section {
@@ -236,6 +327,21 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
         font-size: 0.75rem;
         color: var(--err);
       }
+      .field-success {
+        font-size: 0.75rem;
+        color: var(--ok);
+      }
+
+      .lookup-row {
+        display: grid;
+        grid-template-columns: minmax(160px, 1fr) auto;
+        gap: 8px;
+        align-items: start;
+      }
+      .lookup-button {
+        min-height: 42px;
+        white-space: nowrap;
+      }
 
       .field-note {
         display: flex;
@@ -281,6 +387,15 @@ import { CompaniesApiService, CompanyPayload } from '../../core/api/companies-ap
         .form-section {
           grid-template-columns: 1fr;
         }
+
+        .lookup-row {
+          grid-template-columns: 1fr;
+        }
+
+        .lookup-button {
+          width: 100%;
+          justify-content: center;
+        }
       }
     `,
   ],
@@ -292,6 +407,10 @@ export class CompanyFormPageComponent implements OnInit {
   private readonly companiesApi = inject(CompaniesApiService);
 
   companyId: string | null = null;
+  activeTab: 'identity' | 'tax' | 'mydata' | 'contact' = 'identity';
+  isLookingUpAade = false;
+  aadeLookupStatus = '';
+  aadeLookupError = '';
 
   readonly form = this.formBuilder.nonNullable.group({
     legalName: ['', [Validators.required, Validators.minLength(2)]],
@@ -346,6 +465,38 @@ export class CompanyFormPageComponent implements OnInit {
     return control.hasError(errorName) && (control.dirty || control.touched);
   }
 
+  setActiveTab(tab: typeof this.activeTab): void {
+    this.activeTab = tab;
+  }
+
+  lookupAadeRegistry(): void {
+    const vatNumberControl = this.form.controls.vatNumber;
+    vatNumberControl.markAsTouched();
+    this.aadeLookupStatus = '';
+    this.aadeLookupError = '';
+
+    if (vatNumberControl.invalid) {
+      return;
+    }
+
+    this.isLookingUpAade = true;
+    this.companiesApi
+      .lookupAadeRegistry(vatNumberControl.value)
+      .pipe(finalize(() => (this.isLookingUpAade = false)))
+      .subscribe({
+        next: (lookup) => {
+          this.applyAadeLookup(lookup);
+          this.aadeLookupStatus = 'Συμπληρώθηκαν τα βασικά στοιχεία από ΑΑΔΕ.';
+        },
+        error: (error: { error?: { message?: string | string[] }; message?: string }) => {
+          const message = error.error?.message ?? error.message;
+          this.aadeLookupError = Array.isArray(message)
+            ? message.join(', ')
+            : (message ?? 'Δεν ολοκληρώθηκε η ανάκτηση από ΑΑΔΕ.');
+        },
+      });
+  }
+
   submit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -387,6 +538,23 @@ export class CompanyFormPageComponent implements OnInit {
       fiscalYearStart: value.fiscalYearStart,
       fiscalYearEnd: value.fiscalYearEnd,
     };
+  }
+
+  private applyAadeLookup(lookup: AadeRegistryCompanyLookup): void {
+    this.form.patchValue({
+      legalName: lookup.legalName ?? this.form.controls.legalName.value,
+      tradeName: lookup.tradeName ?? this.form.controls.tradeName.value,
+      entityType: lookup.entityType ?? this.form.controls.entityType.value,
+      professionLabel: lookup.professionLabel ?? this.form.controls.professionLabel.value,
+      vatNumber: lookup.vatNumber,
+      taxOffice: lookup.taxOffice ?? this.form.controls.taxOffice.value,
+      activityCodesText:
+        lookup.activityCodes.length > 0
+          ? lookup.activityCodes.join(', ')
+          : this.form.controls.activityCodesText.value,
+      address: lookup.address ?? this.form.controls.address.value,
+      vatRegime: lookup.vatRegime ?? this.form.controls.vatRegime.value,
+    });
   }
 }
 

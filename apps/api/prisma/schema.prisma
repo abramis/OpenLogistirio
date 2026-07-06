@@ -142,6 +142,7 @@ model AccountingOffice {
   clientCompanies       ClientCompany[]
   documents             Document[]
   fixedAssets           FixedAsset[]
+  clientSetupItems      ClientSetupItem[]
   obligations           OfficeObligation[]
   counterparties        Counterparty[]
   importBatches         ImportBatch[]
@@ -193,6 +194,7 @@ model ClientCompany {
   accountingOffice      AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
   documents             Document[]
   fixedAssets           FixedAsset[]
+  setupItems            ClientSetupItem[]
   obligations           OfficeObligation[]
   counterparties        Counterparty[]
   importBatches         ImportBatch[]
@@ -200,6 +202,26 @@ model ClientCompany {
 
   @@unique([accountingOfficeId, vatNumber])
   @@index([accountingOfficeId, deletedAt])
+}
+
+model ClientSetupItem {
+  id                 String   @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  kind               String   @db.VarChar(80)
+  code               String   @db.VarChar(80)
+  name               String
+  description        String?
+  metadata           Json?
+  sourceTemplate     String?  @db.VarChar(80)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@unique([clientCompanyId, kind, code], map: "ClientSetupItem_client_kind_code_key")
+  @@index([accountingOfficeId, clientCompanyId, kind], map: "ClientSetupItem_office_client_kind_idx")
 }
 
 model Counterparty {
@@ -353,6 +375,8 @@ model Document {
   issueDate             DateTime
   counterpartyName      String?
   counterpartyVatNumber String?      @db.VarChar(20)
+  movementCode          String?      @db.VarChar(80)
+  journalCode           String?      @db.VarChar(80)
   netAmount             Decimal      @db.Decimal(12, 2)
   vatAmount             Decimal      @db.Decimal(12, 2)
   totalAmount           Decimal      @db.Decimal(12, 2)
@@ -373,6 +397,8 @@ model Document {
 
   @@index([accountingOfficeId, clientCompanyId, issueDate])
   @@index([accountingOfficeId, myDataStatus])
+  @@index([clientCompanyId, movementCode, issueDate])
+  @@index([clientCompanyId, journalCode, issueDate])
 }
 
 model TransmissionAttempt {

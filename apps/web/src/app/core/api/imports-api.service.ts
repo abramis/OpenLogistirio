@@ -27,7 +27,7 @@ export interface DocumentsCsvImportResponse {
   validRows: number;
   failedRows: number;
   errors: Array<{ rowNumber: number; message: string }>;
-  preview: unknown[];
+  preview: Array<Record<string, unknown>>;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -16,6 +16,8 @@ describe('DocumentsListPageComponent', () => {
           documentNumber: '12',
           issueDate: '2026-07-01T00:00:00.000Z',
           counterpartyName: 'Demo Customer',
+          movementCode: 'SALE_INVOICE',
+          journalCode: 'SALES',
           netAmount: '100.00',
           vatAmount: '24.00',
           totalAmount: '124.00',
@@ -78,6 +80,8 @@ describe('DocumentsListPageComponent', () => {
       vatAmount: '24.00',
       totalAmount: '124.00',
       vatCategory: 'VAT_24',
+      movementCode: 'SALE_INVOICE',
+      journalCode: 'SALES',
       myDataStatus: 'DRAFT',
       clientCompany: {
         id: 'company-1',
@@ -101,6 +105,8 @@ describe('DocumentsListPageComponent', () => {
       vatAmount: '24.00',
       totalAmount: '124.00',
       vatCategory: 'VAT_24',
+      movementCode: 'SALE_INVOICE',
+      journalCode: 'SALES',
       myDataStatus: 'DRAFT',
       clientCompany: {
         id: 'company-1',
@@ -122,6 +128,8 @@ describe('DocumentsListPageComponent', () => {
       vatAmount: '24.00',
       totalAmount: '124.00',
       vatCategory: 'VAT_24',
+      movementCode: 'SALE_INVOICE',
+      journalCode: 'SALES',
       myDataStatus: 'DRAFT',
       clientCompany: {
         id: 'company-1',

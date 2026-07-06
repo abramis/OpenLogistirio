@@ -46,6 +46,55 @@ export interface CompanyPayload {
   fiscalYearEnd?: number;
 }
 
+export interface AadeRegistryCompanyLookup {
+  vatNumber: string;
+  legalName?: string;
+  tradeName?: string;
+  entityType?: string;
+  professionLabel?: string;
+  taxOffice?: string;
+  activityCodes: string[];
+  address?: string;
+  vatRegime?: string;
+  status?: string;
+  registrationDate?: string;
+  stopDate?: string;
+}
+
+export interface ClientSetupKindSummary {
+  kind: string;
+  label: string;
+  count: number;
+}
+
+export interface ClientSetupTemplate {
+  id: string;
+  name: string;
+  description: string;
+  recommendedFor: string[];
+  itemCount: number;
+  kinds: ClientSetupKindSummary[];
+}
+
+export interface ClientSetupItem {
+  id: string;
+  clientCompanyId: string;
+  kind: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  metadata?: Record<string, unknown> | null;
+  sourceTemplate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApplyClientSetupResult {
+  templateId: string;
+  appliedCount: number;
+  items: ClientSetupItem[];
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -63,6 +112,34 @@ export class CompaniesApiService {
 
   create(payload: CompanyPayload): Observable<ClientCompany> {
     return this.http.post<ClientCompany>(this.baseUrl, payload, { headers: this.headers });
+  }
+
+  lookupAadeRegistry(vatNumber: string): Observable<AadeRegistryCompanyLookup> {
+    return this.http.post<AadeRegistryCompanyLookup>(
+      `${this.baseUrl}/aade/lookup`,
+      { vatNumber },
+      { headers: this.headers },
+    );
+  }
+
+  listSetupTemplates(id: string): Observable<ClientSetupTemplate[]> {
+    return this.http.get<ClientSetupTemplate[]>(`${this.baseUrl}/${id}/setup/templates`, {
+      headers: this.headers,
+    });
+  }
+
+  findSetupItems(id: string): Observable<ClientSetupItem[]> {
+    return this.http.get<ClientSetupItem[]>(`${this.baseUrl}/${id}/setup`, {
+      headers: this.headers,
+    });
+  }
+
+  applySetupTemplate(id: string, templateId: string): Observable<ApplyClientSetupResult> {
+    return this.http.post<ApplyClientSetupResult>(
+      `${this.baseUrl}/${id}/setup/apply`,
+      { templateId },
+      { headers: this.headers },
+    );
   }
 
   update(id: string, payload: CompanyPayload): Observable<ClientCompany> {

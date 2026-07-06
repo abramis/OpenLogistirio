@@ -55,6 +55,18 @@ AADE_MYDATA_TEST_SEND_INVOICES_URL=https://mydataapidev.aade.gr/SendInvoices
 
 Do not put TAXISnet passwords in `.env`.
 
+For AADE Business Registry basic-details lookup from the client form, use the
+special credentials for “Αναζήτηση Βασικών Στοιχείων Μητρώου Επιχειρήσεων”:
+
+```bash
+AADE_REGISTRY_USERNAME=your-special-registry-username
+AADE_REGISTRY_PASSWORD=your-special-registry-password
+AADE_REGISTRY_CALLED_BY_VAT=optional-calling-vat
+AADE_REGISTRY_ENDPOINT=https://www1.gsis.gr/wsaade/RgWsPublic2/RgWsPublic2
+```
+
+These are not myDATA REST API credentials. Keep them server-side only.
+
 If a specific client must use their own myDATA REST API credentials, do not store
 the credentials in the database. In the client form set `Env reference credentials`
 to something like `CLIENT_111222333`, then add:
@@ -235,6 +247,26 @@ Useful official AADE pages:
 - https://www.aade.gr/mydata/tehnikes-prodiagrafes-ekdoseis-mydata
 - https://www.aade.gr/sites/default/files/2021-07/FAQseggrafi_myDATA_REST_API_02072021.pdf
 
+## AADE Registry Lookup
+
+The client form includes an `Ανάκτηση από ΑΑΔΕ` action next to ΑΦΜ. It calls the
+official AADE “Αναζήτηση Βασικών Στοιχείων Μητρώου Επιχειρήσεων” SOAP service
+and fills the basic client profile fields returned by AADE: legal name, trade
+name, tax office, address, VAT regime signal, entity type signal, primary
+activity/profession, and activity codes.
+
+To use it, the accounting office must:
+
+- Register in the AADE registry lookup service with TAXISnet
+- Create special credentials through `Διαχείριση Ειδικών Κωδικών`
+- Set `AADE_REGISTRY_USERNAME` and `AADE_REGISTRY_PASSWORD` in the API
+  environment
+
+Do not store those credentials in the database or expose them in the browser.
+The official AADE page checked for this implementation is:
+
+- https://www.aade.gr/anazitisi-basikon-stoiheion-mitrooy-epiheiriseon
+
 ## Current Step
 
 The current slice adds client tax profiles, per-client myDATA setup, AADE test-send
@@ -244,6 +276,11 @@ and a more complete client/document workspace UI.
 Implemented accounting-office workflows in the MVP:
 
 - Client tax profiles for companies, sole proprietors and freelancers
+- Client setup templates for basic books, journals, movement codes, VAT setup,
+  fixed asset categories, depreciation rules, tax adjustment placeholders, and
+  Intrastat placeholders
+- Per-document movement codes and journals from client setup, with a client
+  movement/book view on the client details page
 - Sales/purchase/credit/retail document registry
 - VAT book review from documents
 - myDATA XML preparation, mock send and AADE test send for issued sales documents
@@ -256,6 +293,25 @@ Implemented accounting-office workflows in the MVP:
 - Office obligations queue with monthly generator for myDATA review and VAT obligations
 - Fixed asset register with prorated annual depreciation calculation
 - In-app About page that explains capabilities to accountants/users
+
+## Client Setup Templates
+
+After creating a client, open the client details page and use
+`Παραμετροποίηση` to apply a starter setup template:
+
+- `Απλογραφικά - ΕΛΠ`
+- `Διπλογραφικά - ΕΛΠ`
+
+The current slice stores applied setup items per client and is idempotent: running
+the same template again updates the same setup codes instead of duplicating them.
+It currently covers master/setup data that already makes sense for the MVP:
+book system, future accounting-plan placeholder, account types, movement codes,
+journals, VAT setup, fixed asset categories, depreciation rules, tax-adjustment
+placeholders, and Intrastat placeholders.
+
+The full chart of accounts/general-ledger engine is intentionally not created by
+this template yet; it will become real accounting accounts when the general ledger
+module lands.
 
 Not production-ready yet:
 

@@ -16,6 +16,13 @@ describe('CompanyFormPageComponent', () => {
       }),
     ),
     update: jasmine.createSpy('update'),
+    lookupAadeRegistry: jasmine.createSpy('lookupAadeRegistry').and.returnValue(
+      of({
+        vatNumber: '123456789',
+        legalName: 'Demo Company',
+        activityCodes: ['69200000'],
+      }),
+    ),
   };
   const router = {
     navigate: jasmine.createSpy('navigate').and.resolveTo(true),
@@ -52,7 +59,18 @@ describe('CompanyFormPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('Η επωνυμία είναι υποχρεωτική.');
-    expect(fixture.nativeElement.textContent).toContain('Το ΑΦΜ είναι υποχρεωτικό.');
+    expect(component.form.controls.vatNumber.hasError('required')).toBeTrue();
+  });
+
+  it('fills basic company fields from an AADE registry lookup', () => {
+    const component = fixture.componentInstance;
+    component.form.patchValue({ vatNumber: '123456789' });
+
+    component.lookupAadeRegistry();
+
+    expect(companiesApi.lookupAadeRegistry).toHaveBeenCalledWith('123456789');
+    expect(component.form.controls.legalName.value).toBe('Demo Company');
+    expect(component.form.controls.activityCodesText.value).toBe('69200000');
   });
 
   it('creates a company when the form is valid', () => {

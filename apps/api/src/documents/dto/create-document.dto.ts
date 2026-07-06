@@ -1,14 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DocumentType } from '@prisma/client';
-import {
-  IsDateString,
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Length,
-  Min,
-} from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, Length, Min } from 'class-validator';
 
 export class CreateDocumentDto {
   @ApiProperty()
@@ -45,6 +37,18 @@ export class CreateDocumentDto {
   @IsString()
   @Length(9, 20)
   counterpartyVatNumber?: string;
+
+  @ApiPropertyOptional({ example: 'SALE_INVOICE' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  movementCode?: string;
+
+  @ApiPropertyOptional({ example: 'SALES' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  journalCode?: string;
 
   @ApiProperty({ example: 100 })
   @IsNumber()

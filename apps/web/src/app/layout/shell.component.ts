@@ -42,7 +42,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
           </a>
           <a class="nav-item" routerLink="/vat-book" routerLinkActive="active">
             <span class="material-symbols-outlined">calculate</span>
-            <span>Βιβλίο ΦΠΑ</span>
+            <span>Βιβλία</span>
           </a>
           <a class="nav-item" routerLink="/obligations" routerLinkActive="active">
             <span class="material-symbols-outlined">event_available</span>

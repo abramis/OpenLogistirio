@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { validateEnvironment } from './common/config/env.validation';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { ClientSetupModule } from './client-setup/client-setup.module';
 import { CompaniesModule } from './companies/companies.module';
 import { DocumentsModule } from './documents/documents.module';
 import { FixedAssetsModule } from './fixed-assets/fixed-assets.module';
@@ -32,6 +33,7 @@ import { ReportsModule } from './reports/reports.module';
     PrismaModule,
     HealthModule,
     CompaniesModule,
+    ClientSetupModule,
     DocumentsModule,
     MyDataModule,
     FixedAssetsModule,

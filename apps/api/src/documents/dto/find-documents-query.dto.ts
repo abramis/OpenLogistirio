@@ -18,6 +18,16 @@ export class FindDocumentsQueryDto {
   @IsEnum(MyDataStatus)
   myDataStatus?: MyDataStatus;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  movementCode?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  journalCode?: string;
+
   @ApiPropertyOptional({ example: '2026-07-01' })
   @IsOptional()
   @IsDateString()

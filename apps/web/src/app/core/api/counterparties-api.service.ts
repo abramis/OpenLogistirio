@@ -58,6 +58,12 @@ export class CounterpartiesApiService {
     return this.http.post<Counterparty>(this.baseUrl, payload, { headers: this.headers });
   }
 
+  update(id: string, payload: CounterpartyPayload): Observable<Counterparty> {
+    return this.http.patch<Counterparty>(`${this.baseUrl}/${id}`, payload, {
+      headers: this.headers,
+    });
+  }
+
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/${id}`, { headers: this.headers });
   }

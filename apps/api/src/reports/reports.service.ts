@@ -53,47 +53,77 @@ export class ReportsService {
           lt: new Date(Date.UTC(year + 1, 0, 1)),
         },
       },
-      include: {
-        clientCompany: {
-          select: { id: true, legalName: true, vatNumber: true },
-        },
-      },
     });
-    const months = new Map<
-      string,
-      {
-        period: string;
-        salesVat: number;
-        purchasesVat: number;
-        payableVat: number;
-        documents: number;
-      }
-    >();
+    const months = new Map<string, VatSummaryRow>();
 
     for (const document of documents) {
       const period = document.issueDate.toISOString().slice(0, 7);
-      const row = months.get(period) ?? {
-        period,
-        salesVat: 0,
-        purchasesVat: 0,
-        payableVat: 0,
-        documents: 0,
-      };
-      const vat = Number(document.vatAmount);
+      const row = months.get(period) ?? createVatSummaryRow(period);
+      const sign = document.documentType === DocumentType.CREDIT_NOTE ? -1 : 1;
+      const net = roundMoney(Number(document.netAmount) * sign);
+      const vat = roundMoney(Number(document.vatAmount) * sign);
 
-      if (document.documentType === DocumentType.PURCHASE_INVOICE) {
+      if (isPurchaseDocument(document)) {
+        row.purchasesNet += net;
         row.purchasesVat += vat;
       } else {
+        row.salesNet += net;
         row.salesVat += vat;
       }
 
       row.payableVat = roundMoney(row.salesVat - row.purchasesVat);
       row.documents += 1;
+      if (document.myDataStatus === MyDataStatus.FAILED) {
+        row.failedMyData += 1;
+      }
       months.set(period, row);
     }
 
-    return [...months.values()].sort((a, b) => a.period.localeCompare(b.period));
+    return [...months.values()]
+      .map((row) => ({
+        ...row,
+        salesNet: roundMoney(row.salesNet),
+        salesVat: roundMoney(row.salesVat),
+        purchasesNet: roundMoney(row.purchasesNet),
+        purchasesVat: roundMoney(row.purchasesVat),
+        payableVat: roundMoney(row.payableVat),
+      }))
+      .sort((a, b) => a.period.localeCompare(b.period));
   }
+}
+
+interface VatSummaryRow {
+  period: string;
+  salesNet: number;
+  salesVat: number;
+  purchasesNet: number;
+  purchasesVat: number;
+  payableVat: number;
+  documents: number;
+  failedMyData: number;
+}
+
+function createVatSummaryRow(period: string): VatSummaryRow {
+  return {
+    period,
+    salesNet: 0,
+    salesVat: 0,
+    purchasesNet: 0,
+    purchasesVat: 0,
+    payableVat: 0,
+    documents: 0,
+    failedMyData: 0,
+  };
+}
+
+function isPurchaseDocument(document: {
+  documentType: DocumentType;
+  movementCode?: string | null;
+}): boolean {
+  return (
+    document.documentType === DocumentType.PURCHASE_INVOICE ||
+    document.movementCode === 'PURCHASE_INVOICE'
+  );
 }
 
 function roundMoney(value: number): number {

@@ -81,6 +81,10 @@ export class FixedAssetsApiService {
     return this.http.post<FixedAsset>(this.baseUrl, payload, { headers: this.headers });
   }
 
+  update(id: string, payload: FixedAssetPayload): Observable<FixedAsset> {
+    return this.http.patch<FixedAsset>(`${this.baseUrl}/${id}`, payload, { headers: this.headers });
+  }
+
   generateDepreciation(assetId: string, year: number): Observable<FixedAssetDepreciationEntry> {
     return this.http.post<FixedAssetDepreciationEntry>(
       `${this.baseUrl}/${assetId}/depreciation/${year}`,

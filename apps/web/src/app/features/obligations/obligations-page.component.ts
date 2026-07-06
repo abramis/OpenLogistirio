@@ -2,7 +2,7 @@ import { AsyncPipe, DatePipe, NgClass, NgFor, NgIf } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { BehaviorSubject, combineLatest, switchMap } from 'rxjs';
+import { BehaviorSubject, combineLatest, switchMap, tap } from 'rxjs';
 import { CompaniesApiService } from '../../core/api/companies-api.service';
 import {
   ObligationFilters,
@@ -22,7 +22,18 @@ import {
         <p class="page-subtitle">Προθεσμίες ανά πελάτη για ΦΠΑ, myDATA και εσωτερικές εργασίες.</p>
       </div>
       <div class="page-actions">
-        <button class="btn btn-secondary" type="button" (click)="generateCurrentMonth()">
+        <select class="compact-control" [(ngModel)]="generateMonth" aria-label="Μήνας παραγωγής">
+          <option *ngFor="let month of months" [value]="month.value">{{ month.label }}</option>
+        </select>
+        <input
+          class="compact-control year-control"
+          [(ngModel)]="generateYear"
+          type="number"
+          min="2000"
+          max="2200"
+          aria-label="Έτος παραγωγής"
+        />
+        <button class="btn btn-secondary" type="button" (click)="generateSelectedMonth()">
           <span class="material-symbols-outlined">event_repeat</span>
           Παραγωγή μήνα
         </button>
@@ -55,7 +66,7 @@ import {
           </label>
           <label>
             Τύπος
-            <select [(ngModel)]="form.type" name="type">
+            <select [(ngModel)]="form.type" name="type" (ngModelChange)="onFormTypeChange()">
               <option value="VAT_RETURN">Περιοδική ΦΠΑ</option>
               <option value="MYDATA_REVIEW">Έλεγχος myDATA</option>
               <option value="WITHHOLDING_TAX">Παρακρατούμενοι</option>
@@ -120,6 +131,31 @@ import {
           </div>
         </div>
         <div class="card-body form-grid">
+          <label class="wide">
+            Πελάτης
+            <select
+              [(ngModel)]="filters.clientCompanyId"
+              name="filterClientCompanyId"
+              (ngModelChange)="applyFilters()"
+            >
+              <option value="">Όλοι οι πελάτες</option>
+              <option *ngFor="let company of companies$ | async" [value]="company.id">
+                {{ company.legalName }} - {{ company.vatNumber }}
+              </option>
+            </select>
+          </label>
+          <label>
+            Τύπος
+            <select [(ngModel)]="filters.type" name="filterType" (ngModelChange)="applyFilters()">
+              <option value="">Όλοι</option>
+              <option value="VAT_RETURN">Περιοδική ΦΠΑ</option>
+              <option value="MYDATA_REVIEW">Έλεγχος myDATA</option>
+              <option value="WITHHOLDING_TAX">Παρακρατούμενοι</option>
+              <option value="INCOME_TAX_PREP">Εισόδημα</option>
+              <option value="PAYROLL_REVIEW">Μισθοδοσία</option>
+              <option value="CUSTOM">Άλλη εργασία</option>
+            </select>
+          </label>
           <label>
             Κατάσταση
             <select
@@ -133,7 +169,17 @@ import {
               <option value="WAITING_CLIENT">Αναμονή πελάτη</option>
               <option value="READY_TO_SUBMIT">Έτοιμο</option>
               <option value="SUBMITTED">Υποβλήθηκε</option>
+              <option value="CANCELLED">Ακυρώθηκε</option>
             </select>
+          </label>
+          <label>
+            Από
+            <input
+              [(ngModel)]="filters.dueFrom"
+              name="dueFrom"
+              type="date"
+              (ngModelChange)="applyFilters()"
+            />
           </label>
           <label>
             Έως
@@ -144,6 +190,20 @@ import {
               (ngModelChange)="applyFilters()"
             />
           </label>
+          <div class="wide quick-filters">
+            <button class="btn btn-xs btn-secondary" type="button" (click)="showOverdue()">
+              Ληξιπρόθεσμα
+            </button>
+            <button class="btn btn-xs btn-secondary" type="button" (click)="showToday()">
+              Σήμερα
+            </button>
+            <button class="btn btn-xs btn-secondary" type="button" (click)="showNextDays(7)">
+              7 ημέρες
+            </button>
+            <button class="btn btn-xs btn-secondary" type="button" (click)="showNextDays(30)">
+              30 ημέρες
+            </button>
+          </div>
           <button class="btn btn-secondary wide" type="button" (click)="resetFilters()">
             Καθαρισμός
           </button>
@@ -152,6 +212,33 @@ import {
     </section>
 
     <section class="table-wrap" *ngIf="obligations$ | async as obligations">
+      <div class="queue-summary" *ngIf="obligations.length > 0">
+        <div>
+          <span>Ανοιχτά</span>
+          <strong>{{ queueSummary(obligations).open }}</strong>
+        </div>
+        <div>
+          <span>Ληξιπρόθεσμα</span>
+          <strong class="danger-text">{{ queueSummary(obligations).overdue }}</strong>
+        </div>
+        <div>
+          <span>Επόμενες 7 ημέρες</span>
+          <strong>{{ queueSummary(obligations).dueSoon }}</strong>
+        </div>
+        <div>
+          <span>Αναμονή πελάτη</span>
+          <strong>{{ queueSummary(obligations).waitingClient }}</strong>
+        </div>
+        <div>
+          <span>Έτοιμα</span>
+          <strong>{{ queueSummary(obligations).ready }}</strong>
+        </div>
+        <button class="btn btn-secondary" type="button" (click)="exportCsv()">
+          <span class="material-symbols-outlined">download</span>
+          CSV
+        </button>
+      </div>
+
       <table>
         <thead>
           <tr>
@@ -160,6 +247,7 @@ import {
             <th>Περίοδος</th>
             <th>Προθεσμία</th>
             <th>Κατάσταση</th>
+            <th>Recurrence</th>
             <th></th>
           </tr>
         </thead>
@@ -182,6 +270,7 @@ import {
                 {{ statusLabel(obligation.status) }}
               </span>
             </td>
+            <td>{{ recurrenceLabel(obligation.recurrence) }}</td>
             <td class="row-actions">
               <button
                 class="btn btn-xs btn-secondary"
@@ -243,15 +332,71 @@ import {
         gap: 8px;
       }
 
+      .compact-control {
+        width: 132px;
+        min-height: 36px;
+      }
+
+      .year-control {
+        width: 92px;
+      }
+
+      .quick-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .queue-summary {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(110px, 1fr)) auto;
+        align-items: stretch;
+        gap: 0;
+        border-bottom: 1px solid var(--border);
+        margin: -1px -1px 12px;
+      }
+
+      .queue-summary div {
+        display: grid;
+        gap: 4px;
+        padding: 12px 14px;
+        border-right: 1px solid var(--border);
+      }
+
+      .queue-summary span {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .queue-summary strong {
+        font-size: 1.2rem;
+      }
+
+      .queue-summary .btn {
+        align-self: center;
+        margin: 8px 10px;
+      }
+
       .overdue {
         color: var(--err);
         font-weight: 700;
       }
 
+      .danger-text {
+        color: var(--err);
+      }
+
       @media (max-width: 980px) {
         .work-grid,
-        .form-grid {
+        .form-grid,
+        .queue-summary {
           grid-template-columns: 1fr;
+        }
+
+        .queue-summary div {
+          border-right: none;
+          border-bottom: 1px solid var(--border);
         }
       }
     `,
@@ -265,9 +410,29 @@ export class ObligationsPageComponent {
   readonly companies$ = inject(CompaniesApiService).findAll();
   readonly obligations$ = combineLatest([this.reload$, this.filters$]).pipe(
     switchMap(([, filters]) => this.obligationsApi.findAll(filters)),
+    tap((obligations) => {
+      this.latestObligations = obligations;
+    }),
   );
 
   readonly today = new Date().toISOString().slice(0, 10);
+  readonly months = [
+    { value: 1, label: 'Ιανουάριος' },
+    { value: 2, label: 'Φεβρουάριος' },
+    { value: 3, label: 'Μάρτιος' },
+    { value: 4, label: 'Απρίλιος' },
+    { value: 5, label: 'Μάιος' },
+    { value: 6, label: 'Ιούνιος' },
+    { value: 7, label: 'Ιούλιος' },
+    { value: 8, label: 'Αύγουστος' },
+    { value: 9, label: 'Σεπτέμβριος' },
+    { value: 10, label: 'Οκτώβριος' },
+    { value: 11, label: 'Νοέμβριος' },
+    { value: 12, label: 'Δεκέμβριος' },
+  ];
+  private latestObligations: OfficeObligation[] = [];
+  generateYear = new Date().getFullYear();
+  generateMonth = new Date().getMonth() + 1;
   message = '';
   errorMessage = '';
   filters: ObligationFilters = {};
@@ -282,12 +447,31 @@ export class ObligationsPageComponent {
     recurrence: 'NONE',
   };
 
+  onFormTypeChange(): void {
+    this.form.title = this.typeLabel(this.form.type);
+  }
+
   applyFilters(): void {
     this.filters$.next({ ...this.filters });
   }
 
   resetFilters(): void {
     this.filters = {};
+    this.applyFilters();
+  }
+
+  showOverdue(): void {
+    this.filters = { ...this.filters, dueFrom: undefined, dueTo: yesterdayIso(), status: 'OPEN' };
+    this.applyFilters();
+  }
+
+  showToday(): void {
+    this.filters = { ...this.filters, dueFrom: this.today, dueTo: this.today };
+    this.applyFilters();
+  }
+
+  showNextDays(days: number): void {
+    this.filters = { ...this.filters, dueFrom: this.today, dueTo: addDaysIso(days) };
     this.applyFilters();
   }
 
@@ -303,12 +487,20 @@ export class ObligationsPageComponent {
   }
 
   generateCurrentMonth(): void {
-    this.clearMessages();
     const now = new Date();
+    this.generateYear = now.getFullYear();
+    this.generateMonth = now.getMonth() + 1;
+    this.generateSelectedMonth();
+  }
 
-    this.obligationsApi.generateMonthly(now.getFullYear(), now.getMonth() + 1).subscribe({
+  generateSelectedMonth(): void {
+    this.clearMessages();
+
+    this.obligationsApi.generateMonthly(this.generateYear, Number(this.generateMonth)).subscribe({
       next: (response) => {
-        this.message = `Δημιουργήθηκαν/βρέθηκαν ${response.generated} υποχρεώσεις για τον μήνα.`;
+        this.message = `Δημιουργήθηκαν/βρέθηκαν ${response.generated} υποχρεώσεις για ${String(
+          this.generateMonth,
+        ).padStart(2, '0')}/${this.generateYear}.`;
         this.reload$.next();
       },
       error: (error: unknown) => this.showError(error),
@@ -339,6 +531,32 @@ export class ObligationsPageComponent {
     return obligation.periodMonth
       ? `${String(obligation.periodMonth).padStart(2, '0')}/${obligation.periodYear}`
       : String(obligation.periodYear);
+  }
+
+  queueSummary(obligations: OfficeObligation[]) {
+    return obligations.reduce(
+      (summary, obligation) => {
+        const isSubmitted = obligation.status === 'SUBMITTED' || obligation.status === 'CANCELLED';
+        if (!isSubmitted) {
+          summary.open += 1;
+        }
+        if (this.isOverdue(obligation)) {
+          summary.overdue += 1;
+        }
+        if (!isSubmitted && obligation.dueDate.slice(0, 10) <= addDaysIso(7)) {
+          summary.dueSoon += 1;
+        }
+        if (obligation.status === 'WAITING_CLIENT') {
+          summary.waitingClient += 1;
+        }
+        if (obligation.status === 'READY_TO_SUBMIT') {
+          summary.ready += 1;
+        }
+
+        return summary;
+      },
+      { open: 0, overdue: 0, dueSoon: 0, waitingClient: 0, ready: 0 },
+    );
   }
 
   typeLabel(type: string): string {
@@ -380,6 +598,48 @@ export class ObligationsPageComponent {
     return classes[status] ?? 'badge-neutral';
   }
 
+  recurrenceLabel(recurrence: string): string {
+    const labels: Record<string, string> = {
+      NONE: 'Μία φορά',
+      MONTHLY: 'Μηνιαία',
+      QUARTERLY: 'Τριμηνιαία',
+      YEARLY: 'Ετήσια',
+    };
+
+    return labels[recurrence] ?? recurrence;
+  }
+
+  exportCsv(): void {
+    const header = [
+      'title',
+      'type',
+      'company',
+      'vatNumber',
+      'period',
+      'dueDate',
+      'status',
+      'recurrence',
+    ];
+    const rows = this.latestObligations.map((obligation) => [
+      obligation.title,
+      obligation.type,
+      obligation.clientCompany?.legalName ?? '',
+      obligation.clientCompany?.vatNumber ?? '',
+      this.periodLabel(obligation),
+      obligation.dueDate,
+      obligation.status,
+      obligation.recurrence,
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `obligations-${this.today}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   private clearMessages(): void {
     this.message = '';
     this.errorMessage = '';
@@ -396,4 +656,18 @@ export class ObligationsPageComponent {
 
     this.errorMessage = 'Request failed.';
   }
+}
+
+function addDaysIso(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function yesterdayIso(): string {
+  return addDaysIso(-1);
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }

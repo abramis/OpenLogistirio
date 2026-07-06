@@ -13,10 +13,13 @@ export interface OfficeSummaryReport {
 
 export interface VatSummaryRow {
   period: string;
+  salesNet: number;
   salesVat: number;
+  purchasesNet: number;
   purchasesVat: number;
   payableVat: number;
   documents: number;
+  failedMyData: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -30,10 +33,15 @@ export class ReportsApiService {
     });
   }
 
-  vatSummary(year: number): Observable<VatSummaryRow[]> {
+  vatSummary(year: number, clientCompanyId = ''): Observable<VatSummaryRow[]> {
+    const params: Record<string, string | number> = { year };
+    if (clientCompanyId) {
+      params['clientCompanyId'] = clientCompanyId;
+    }
+
     return this.http.get<VatSummaryRow[]>(`${this.baseUrl}/vat-summary`, {
       headers: this.headers,
-      params: { year },
+      params,
     });
   }
 

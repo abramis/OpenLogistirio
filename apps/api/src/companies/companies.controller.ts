@@ -1,8 +1,20 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
+import { AadeRegistryProvider } from './aade-registry.provider';
 import { CompaniesService } from './companies.service';
+import { AadeRegistryLookupDto } from './dto/aade-registry-lookup.dto';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 
@@ -19,7 +31,10 @@ import { UpdateCompanyDto } from './dto/update-company.dto';
 })
 @Controller('companies')
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(
+    private readonly companiesService: CompaniesService,
+    private readonly aadeRegistryProvider: AadeRegistryProvider,
+  ) {}
 
   @Get()
   findAll(@CurrentTenant() tenant: TenantContext) {
@@ -34,6 +49,11 @@ export class CompaniesController {
   @Post()
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateCompanyDto) {
     return this.companiesService.create(tenant, dto);
+  }
+
+  @Post('aade/lookup')
+  lookupAadeRegistry(@Body() dto: AadeRegistryLookupDto) {
+    return this.aadeRegistryProvider.lookupVat(dto.vatNumber);
   }
 
   @Patch(':id')

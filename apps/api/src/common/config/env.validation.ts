@@ -17,6 +17,13 @@ const environmentSchema = z.object({
     .string()
     .url()
     .default('https://mydataapidev.aade.gr/SendInvoices'),
+  AADE_REGISTRY_USERNAME: z.string().optional(),
+  AADE_REGISTRY_PASSWORD: z.string().optional(),
+  AADE_REGISTRY_CALLED_BY_VAT: z.string().optional(),
+  AADE_REGISTRY_ENDPOINT: z
+    .string()
+    .url()
+    .default('https://www1.gsis.gr/wsaade/RgWsPublic2/RgWsPublic2'),
 });
 
 export type EnvironmentVariables = z.infer<typeof environmentSchema>;

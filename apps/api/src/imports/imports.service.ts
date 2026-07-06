@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DocumentType, ImportBatchStatus, ImportBatchType, Prisma } from '@prisma/client';
+import {
+  CounterpartyType,
+  DocumentType,
+  ImportBatchStatus,
+  ImportBatchType,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { ImportDocumentsCsvDto } from './dto/import-documents-csv.dto';
@@ -51,6 +57,7 @@ export class ImportsService {
         data: documents,
         skipDuplicates: false,
       });
+      await this.syncCounterpartiesFromRows(tenant, dto.clientCompanyId, parsedRows);
     }
 
     const batch = await this.prisma.importBatch.create({
@@ -127,11 +134,83 @@ export class ImportsService {
       issueDate: new Date(issueDate),
       counterpartyName: emptyToUndefined(row.values.counterpartyName),
       counterpartyVatNumber: emptyToUndefined(row.values.counterpartyVatNumber),
+      movementCode: emptyToUndefined(row.values.movementCode) ?? defaultMovementCode(documentType),
+      journalCode: emptyToUndefined(row.values.journalCode) ?? defaultJournalCode(documentType),
       netAmount,
       vatAmount,
       totalAmount,
       vatCategory: row.values.vatCategory?.trim() || 'VAT_24',
     };
+  }
+
+  private async syncCounterpartiesFromRows(
+    tenant: TenantContext,
+    clientCompanyId: string,
+    rows: ParsedRow[],
+  ) {
+    const candidates = new Map<
+      string,
+      {
+        name: string;
+        vatNumber?: string;
+        type: CounterpartyType;
+      }
+    >();
+
+    for (const row of rows) {
+      const name = emptyToUndefined(row.values.counterpartyName);
+      const vatNumber = emptyToUndefined(row.values.counterpartyVatNumber);
+      if (!name && !vatNumber) {
+        continue;
+      }
+
+      const documentType = parseDocumentType(row.values.documentType);
+      const key = vatNumber ? `vat:${vatNumber}` : `name:${name}`;
+      const existing = candidates.get(key);
+      const type = counterpartyTypeForDocument(documentType);
+      candidates.set(key, {
+        name: name ?? vatNumber ?? 'Αντισυμβαλλόμενος',
+        vatNumber,
+        type: existing ? mergeCounterpartyTypes(existing.type, type) : type,
+      });
+    }
+
+    for (const candidate of candidates.values()) {
+      const existing = await this.prisma.counterparty.findFirst({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId,
+          deletedAt: null,
+          OR: [
+            candidate.vatNumber ? { vatNumber: candidate.vatNumber } : undefined,
+            { name: candidate.name },
+          ].filter(Boolean) as Prisma.CounterpartyWhereInput[],
+        },
+      });
+
+      if (existing) {
+        await this.prisma.counterparty.update({
+          where: { id: existing.id },
+          data: {
+            name: candidate.name,
+            vatNumber: candidate.vatNumber ?? existing.vatNumber,
+            type: mergeCounterpartyTypes(existing.type, candidate.type),
+          },
+        });
+        continue;
+      }
+
+      await this.prisma.counterparty.create({
+        data: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId,
+          name: candidate.name,
+          vatNumber: candidate.vatNumber,
+          type: candidate.type,
+          country: 'GR',
+        },
+      });
+    }
   }
 }
 
@@ -213,4 +292,39 @@ function emptyToUndefined(value: string | undefined): string | undefined {
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function defaultMovementCode(documentType: DocumentType): string {
+  const defaults: Record<DocumentType, string> = {
+    SALES_INVOICE: 'SALE_INVOICE',
+    PURCHASE_INVOICE: 'PURCHASE_INVOICE',
+    CREDIT_NOTE: 'CREDIT_NOTE',
+    RETAIL_RECEIPT: 'SALE_INVOICE',
+  };
+
+  return defaults[documentType];
+}
+
+function defaultJournalCode(documentType: DocumentType): string {
+  const defaults: Record<DocumentType, string> = {
+    SALES_INVOICE: 'SALES',
+    PURCHASE_INVOICE: 'PURCHASES',
+    CREDIT_NOTE: 'SALES',
+    RETAIL_RECEIPT: 'SALES',
+  };
+
+  return defaults[documentType];
+}
+
+function counterpartyTypeForDocument(documentType: DocumentType): CounterpartyType {
+  return documentType === DocumentType.PURCHASE_INVOICE
+    ? CounterpartyType.SUPPLIER
+    : CounterpartyType.CUSTOMER;
+}
+
+function mergeCounterpartyTypes(
+  first: CounterpartyType,
+  second: CounterpartyType,
+): CounterpartyType {
+  return first === second ? first : CounterpartyType.BOTH;
 }

@@ -11,6 +11,8 @@ export interface DocumentListItem {
   issueDate: string;
   counterpartyName?: string | null;
   counterpartyVatNumber?: string | null;
+  movementCode?: string | null;
+  journalCode?: string | null;
   netAmount: string | number;
   vatAmount: string | number;
   totalAmount: string | number;
@@ -43,6 +45,8 @@ export interface DocumentPayload {
   issueDate: string;
   counterpartyName?: string;
   counterpartyVatNumber?: string;
+  movementCode?: string;
+  journalCode?: string;
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
@@ -74,6 +78,8 @@ export interface DocumentFilters {
   documentType?: string;
   myDataStatus?: string;
   clientCompanyId?: string;
+  movementCode?: string;
+  journalCode?: string;
   dateFrom?: string;
   dateTo?: string;
 }

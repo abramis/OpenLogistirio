@@ -19,6 +19,22 @@ export interface DeclarationWorkpaper {
     payableVat?: number;
     documentCount?: number;
     failedMyData?: number;
+    vatBreakdown?: Array<{
+      vatCategory: string;
+      salesNet: number;
+      salesVat: number;
+      purchasesNet: number;
+      purchasesVat: number;
+      payableVat: number;
+      documents: number;
+    }>;
+    documentTypeBreakdown?: Array<{
+      documentType: string;
+      net: number;
+      vat: number;
+      total: number;
+      documents: number;
+    }>;
   };
   generatedAt: string;
   clientCompany?: {
