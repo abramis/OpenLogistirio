@@ -1,10 +1,13 @@
-import { Component } from '@angular/core';
+import { NgIf } from '@angular/common';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { AuthService } from '../core/auth/auth.service';
+import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
 
 @Component({
   selector: 'ol-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive],
+  imports: [NgIf, RouterLink, RouterLinkActive],
   template: `
     <div class="shell">
       <aside class="sidebar">
@@ -44,6 +47,10 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
             <span class="material-symbols-outlined">calculate</span>
             <span>Βιβλία</span>
           </a>
+          <a class="nav-item" routerLink="/accounting" routerLinkActive="active">
+            <span class="material-symbols-outlined">account_balance</span>
+            <span>Λογιστική</span>
+          </a>
           <a class="nav-item" routerLink="/obligations" routerLinkActive="active">
             <span class="material-symbols-outlined">event_available</span>
             <span>Υποχρεώσεις</span>
@@ -64,6 +71,32 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
             <span class="material-symbols-outlined">analytics</span>
             <span>Reports</span>
           </a>
+          <a *ngIf="canViewAudit()" class="nav-item" routerLink="/audit" routerLinkActive="active">
+            <span class="material-symbols-outlined">history</span>
+            <span>Audit</span>
+          </a>
+          <a
+            *ngIf="canManageUsers()"
+            class="nav-item"
+            routerLink="/users"
+            routerLinkActive="active"
+          >
+            <span class="material-symbols-outlined">manage_accounts</span>
+            <span>Χρήστες</span>
+          </a>
+          <a
+            *ngIf="canManageUsers()"
+            class="nav-item"
+            routerLink="/backups"
+            routerLinkActive="active"
+          >
+            <span class="material-symbols-outlined">backup</span>
+            <span>Backups</span>
+          </a>
+          <a class="nav-item" routerLink="/settings" routerLinkActive="active">
+            <span class="material-symbols-outlined">settings</span>
+            <span>Ρυθμίσεις</span>
+          </a>
           <a class="nav-item" routerLink="/about" routerLinkActive="active">
             <span class="material-symbols-outlined">info</span>
             <span>About</span>
@@ -81,6 +114,16 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       </aside>
 
       <main class="content">
+        <header class="topbar">
+          <div>
+            <strong>{{ auth.user()?.fullName || 'Open Logistirio' }}</strong>
+            <span>{{ auth.user()?.role || '' }}</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" type="button" (click)="auth.logout()">
+            <span class="material-symbols-outlined">logout</span>
+            Έξοδος
+          </button>
+        </header>
         <ng-content />
       </main>
     </div>
@@ -225,6 +268,31 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
         padding: 28px 32px;
       }
 
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        margin: -10px 0 18px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .topbar div {
+        display: grid;
+        gap: 2px;
+        text-align: right;
+      }
+
+      .topbar strong {
+        font-size: 0.85rem;
+      }
+
+      .topbar span {
+        color: var(--muted);
+        font-size: 0.72rem;
+      }
+
       @media (max-width: 760px) {
         .shell {
           grid-template-columns: 1fr;
@@ -252,8 +320,22 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
         .content {
           padding: 16px;
         }
+
+        .topbar {
+          margin-top: 0;
+        }
       }
     `,
   ],
 })
-export class ShellComponent {}
+export class ShellComponent {
+  readonly auth = inject(AuthService);
+
+  canViewAudit(): boolean {
+    return this.auth.hasAnyRole(ACCOUNTING_CONTROL_ROLES);
+  }
+
+  canManageUsers(): boolean {
+    return this.auth.hasAnyRole(ADMIN_ROLES);
+  }
+}

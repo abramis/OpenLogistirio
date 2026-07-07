@@ -9,4 +9,5 @@ coverage/
 *.log
 tmp/
 uploads/
+backups/
 apps/api/generated/

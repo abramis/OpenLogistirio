@@ -1,84 +1,158 @@
 import { Routes } from '@angular/router';
-import { AboutPageComponent } from './features/about/about-page.component';
-import { CompanyDetailsPageComponent } from './features/companies/company-details-page.component';
-import { CompanyFormPageComponent } from './features/companies/company-form-page.component';
-import { CompaniesListPageComponent } from './features/companies/companies-list-page.component';
-import { CounterpartiesPageComponent } from './features/counterparties/counterparties-page.component';
-import { DeclarationsPageComponent } from './features/declarations/declarations-page.component';
-import { DocumentsListPageComponent } from './features/documents/documents-list-page.component';
-import { DocumentFormPageComponent } from './features/documents/document-form-page.component';
-import { DashboardPageComponent } from './features/dashboard/dashboard-page.component';
-import { FixedAssetsPageComponent } from './features/fixed-assets/fixed-assets-page.component';
-import { ImportsPageComponent } from './features/imports/imports-page.component';
-import { LoginPageComponent } from './features/login/login-page.component';
-import { ObligationsPageComponent } from './features/obligations/obligations-page.component';
-import { ReportsPageComponent } from './features/reports/reports-page.component';
-import { VatBookPageComponent } from './features/vat/vat-book-page.component';
+import { authMatchGuard, roleMatchGuard } from './core/auth/auth.guard';
+import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from './core/auth/user-roles';
 
 export const routes: Routes = [
   {
     path: '',
-    component: DashboardPageComponent,
+    pathMatch: 'full',
+    loadComponent: () =>
+      import('./features/dashboard/dashboard-page.component').then((m) => m.DashboardPageComponent),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'login',
-    component: LoginPageComponent,
+    loadComponent: () =>
+      import('./features/login/login-page.component').then((m) => m.LoginPageComponent),
   },
   {
     path: 'companies',
-    component: CompaniesListPageComponent,
+    loadComponent: () =>
+      import('./features/companies/companies-list-page.component').then(
+        (m) => m.CompaniesListPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'companies/new',
-    component: CompanyFormPageComponent,
+    loadComponent: () =>
+      import('./features/companies/company-form-page.component').then(
+        (m) => m.CompanyFormPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'companies/:id',
-    component: CompanyDetailsPageComponent,
+    loadComponent: () =>
+      import('./features/companies/company-details-page.component').then(
+        (m) => m.CompanyDetailsPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'companies/:id/edit',
-    component: CompanyFormPageComponent,
+    loadComponent: () =>
+      import('./features/companies/company-form-page.component').then(
+        (m) => m.CompanyFormPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'documents',
-    component: DocumentsListPageComponent,
+    loadComponent: () =>
+      import('./features/documents/documents-list-page.component').then(
+        (m) => m.DocumentsListPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'documents/new',
-    component: DocumentFormPageComponent,
+    loadComponent: () =>
+      import('./features/documents/document-form-page.component').then(
+        (m) => m.DocumentFormPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'vat-book',
-    component: VatBookPageComponent,
+    loadComponent: () =>
+      import('./features/vat/vat-book-page.component').then((m) => m.VatBookPageComponent),
+    canMatch: [authMatchGuard],
+  },
+  {
+    path: 'accounting',
+    loadComponent: () =>
+      import('./features/accounting/accounting-page.component').then(
+        (m) => m.AccountingPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'counterparties',
-    component: CounterpartiesPageComponent,
+    loadComponent: () =>
+      import('./features/counterparties/counterparties-page.component').then(
+        (m) => m.CounterpartiesPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'obligations',
-    component: ObligationsPageComponent,
+    loadComponent: () =>
+      import('./features/obligations/obligations-page.component').then(
+        (m) => m.ObligationsPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'fixed-assets',
-    component: FixedAssetsPageComponent,
+    loadComponent: () =>
+      import('./features/fixed-assets/fixed-assets-page.component').then(
+        (m) => m.FixedAssetsPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'imports',
-    component: ImportsPageComponent,
+    loadComponent: () =>
+      import('./features/imports/imports-page.component').then((m) => m.ImportsPageComponent),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'declarations',
-    component: DeclarationsPageComponent,
+    loadComponent: () =>
+      import('./features/declarations/declarations-page.component').then(
+        (m) => m.DeclarationsPageComponent,
+      ),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'reports',
-    component: ReportsPageComponent,
+    loadComponent: () =>
+      import('./features/reports/reports-page.component').then((m) => m.ReportsPageComponent),
+    canMatch: [authMatchGuard],
+  },
+  {
+    path: 'audit',
+    loadComponent: () =>
+      import('./features/audit/audit-page.component').then((m) => m.AuditPageComponent),
+    canMatch: [authMatchGuard, roleMatchGuard],
+    data: { roles: ACCOUNTING_CONTROL_ROLES },
+  },
+  {
+    path: 'users',
+    loadComponent: () =>
+      import('./features/users/users-page.component').then((m) => m.UsersPageComponent),
+    canMatch: [authMatchGuard, roleMatchGuard],
+    data: { roles: ADMIN_ROLES },
+  },
+  {
+    path: 'backups',
+    loadComponent: () =>
+      import('./features/backups/backups-page.component').then((m) => m.BackupsPageComponent),
+    canMatch: [authMatchGuard, roleMatchGuard],
+    data: { roles: ADMIN_ROLES },
+  },
+  {
+    path: 'settings',
+    loadComponent: () =>
+      import('./features/settings/settings-page.component').then((m) => m.SettingsPageComponent),
+    canMatch: [authMatchGuard],
   },
   {
     path: 'about',
-    component: AboutPageComponent,
+    loadComponent: () =>
+      import('./features/about/about-page.component').then((m) => m.AboutPageComponent),
+    canMatch: [authMatchGuard],
   },
   {
     path: '**',

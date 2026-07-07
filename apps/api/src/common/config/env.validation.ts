@@ -10,13 +10,38 @@ const environmentSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   API_PORT: z.coerce.number().int().positive().default(3000),
   FRONTEND_ORIGIN: z.string().url().default('http://localhost:4200'),
-  AADE_MYDATA_ENV: z.enum(['test', 'production-disabled']).default('test'),
+  BACKUP_DIR: z.string().default('./backups'),
+  AADE_MYDATA_ENV: z.enum(['test', 'production']).default('test'),
+  AADE_MYDATA_PRODUCTION_ENABLED: z
+    .preprocess((value) => value === true || value === 'true', z.boolean())
+    .default(false),
   AADE_MYDATA_USER_ID: z.string().optional(),
   AADE_MYDATA_SUBSCRIPTION_KEY: z.string().optional(),
+  AADE_MYDATA_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   AADE_MYDATA_TEST_SEND_INVOICES_URL: z
     .string()
     .url()
     .default('https://mydataapidev.aade.gr/SendInvoices'),
+  AADE_MYDATA_TEST_REQUEST_DOCS_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/RequestDocs'),
+  AADE_MYDATA_TEST_REQUEST_TRANSMITTED_DOCS_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/RequestTransmittedDocs'),
+  AADE_MYDATA_PRODUCTION_SEND_INVOICES_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/SendInvoices'),
+  AADE_MYDATA_PRODUCTION_REQUEST_DOCS_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/RequestDocs'),
+  AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs'),
   AADE_REGISTRY_USERNAME: z.string().optional(),
   AADE_REGISTRY_PASSWORD: z.string().optional(),
   AADE_REGISTRY_CALLED_BY_VAT: z.string().optional(),

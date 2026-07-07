@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BehaviorSubject, combineLatest, switchMap, tap } from 'rxjs';
+import { AccountingApiService, JournalEntry } from '../../core/api/accounting-api.service';
 import {
   ClientSetupItem,
   CompaniesApiService,
@@ -244,6 +245,13 @@ import {
               <small *ngIf="asset.depreciationEntries && asset.depreciationEntries[0]">
                 Τελευταία: {{ asset.depreciationEntries[0].fiscalYear }} /
                 {{ asset.depreciationEntries[0].amount | number: '1.2-2' }}
+                <span
+                  class="badge"
+                  [class.badge-success]="asset.depreciationEntries[0].posted"
+                  [class.badge-warning]="!asset.depreciationEntries[0].posted"
+                >
+                  {{ asset.depreciationEntries[0].posted ? 'POSTED' : 'OPEN' }}
+                </span>
               </small>
             </td>
             <td>{{ bookValue(asset) | number: '1.2-2' }}</td>
@@ -257,6 +265,14 @@ import {
                 (click)="generateDepreciation(asset)"
               >
                 Απόσβεση {{ currentYear }}
+              </button>
+              <button
+                class="btn btn-xs btn-secondary"
+                type="button"
+                [disabled]="!latestDepreciation(asset) || latestDepreciation(asset)?.posted"
+                (click)="postLatestDepreciation(asset)"
+              >
+                Άρθρο
               </button>
             </td>
           </tr>
@@ -361,6 +377,7 @@ import {
 })
 export class FixedAssetsPageComponent {
   private readonly fixedAssetsApi = inject(FixedAssetsApiService);
+  private readonly accountingApi = inject(AccountingApiService);
   private readonly companiesApi = inject(CompaniesApiService);
   private readonly reload$ = new BehaviorSubject<void>(undefined);
   private readonly filters$ = new BehaviorSubject<FixedAssetFilters>({});
@@ -513,6 +530,23 @@ export class FixedAssetsPageComponent {
     });
   }
 
+  postLatestDepreciation(asset: FixedAsset): void {
+    const entry = this.latestDepreciation(asset);
+    if (!entry) {
+      this.message = 'Δεν υπάρχει απόσβεση για posting.';
+      return;
+    }
+
+    this.clearMessages();
+    this.accountingApi.postFixedAssetDepreciation(entry.id).subscribe({
+      next: (journalEntry: JournalEntry) => {
+        this.message = `Δημιουργήθηκε άρθρο απόσβεσης ${journalEntry.entryNumber}.`;
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
   generateDepreciationForVisible(): void {
     this.clearMessages();
     const activeAssets = this.latestAssets.filter((asset) => asset.status === 'ACTIVE');
@@ -550,6 +584,10 @@ export class FixedAssetsPageComponent {
 
   bookValue(asset: FixedAsset): number {
     return Number(asset.netValue || 0) - Number(asset.accumulatedDepreciation || 0);
+  }
+
+  latestDepreciation(asset: FixedAsset) {
+    return asset.depreciationEntries?.[0];
   }
 
   exportCsv(): void {

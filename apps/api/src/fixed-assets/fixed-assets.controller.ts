@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
+import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { CreateFixedAssetDto } from './dto/create-fixed-asset.dto';
@@ -8,11 +10,6 @@ import { UpdateFixedAssetDto } from './dto/update-fixed-asset.dto';
 import { FixedAssetsService } from './fixed-assets.service';
 
 @ApiTags('fixed-assets')
-@ApiHeader({
-  name: 'x-office-id',
-  description: 'Temporary MVP tenant header. Later this comes from the JWT.',
-  required: true,
-})
 @Controller('fixed-assets')
 export class FixedAssetsController {
   constructor(private readonly fixedAssetsService: FixedAssetsService) {}
@@ -28,11 +25,13 @@ export class FixedAssetsController {
   }
 
   @Post()
+  @Roles(...OFFICE_WRITE_ROLES)
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateFixedAssetDto) {
     return this.fixedAssetsService.create(tenant, dto);
   }
 
   @Patch(':id')
+  @Roles(...OFFICE_WRITE_ROLES)
   update(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -42,6 +41,7 @@ export class FixedAssetsController {
   }
 
   @Post(':id/depreciation/:year')
+  @Roles(...OFFICE_WRITE_ROLES)
   generateDepreciation(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,

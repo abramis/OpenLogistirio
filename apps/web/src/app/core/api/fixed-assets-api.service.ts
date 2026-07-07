@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -74,28 +74,22 @@ export class FixedAssetsApiService {
       Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''),
     );
 
-    return this.http.get<FixedAsset[]>(this.baseUrl, { headers: this.headers, params });
+    return this.http.get<FixedAsset[]>(this.baseUrl, { params });
   }
 
   create(payload: FixedAssetPayload): Observable<FixedAsset> {
-    return this.http.post<FixedAsset>(this.baseUrl, payload, { headers: this.headers });
+    return this.http.post<FixedAsset>(this.baseUrl, payload, {});
   }
 
   update(id: string, payload: FixedAssetPayload): Observable<FixedAsset> {
-    return this.http.patch<FixedAsset>(`${this.baseUrl}/${id}`, payload, { headers: this.headers });
+    return this.http.patch<FixedAsset>(`${this.baseUrl}/${id}`, payload, {});
   }
 
   generateDepreciation(assetId: string, year: number): Observable<FixedAssetDepreciationEntry> {
     return this.http.post<FixedAssetDepreciationEntry>(
       `${this.baseUrl}/${assetId}/depreciation/${year}`,
       {},
-      { headers: this.headers },
+      {},
     );
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({
-      'x-office-id': 'office-athens-demo',
-    });
   }
 }

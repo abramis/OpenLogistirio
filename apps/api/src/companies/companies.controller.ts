@@ -9,7 +9,9 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
+import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { AadeRegistryProvider } from './aade-registry.provider';
@@ -19,16 +21,6 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 
 @ApiTags('companies')
-@ApiHeader({
-  name: 'x-office-id',
-  description: 'Temporary MVP tenant header. Later this comes from the JWT.',
-  required: true,
-})
-@ApiHeader({
-  name: 'x-user-id',
-  description: 'Temporary MVP user header for audit logs.',
-  required: false,
-})
 @Controller('companies')
 export class CompaniesController {
   constructor(
@@ -47,6 +39,7 @@ export class CompaniesController {
   }
 
   @Post()
+  @Roles(...OFFICE_WRITE_ROLES)
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateCompanyDto) {
     return this.companiesService.create(tenant, dto);
   }
@@ -57,6 +50,7 @@ export class CompaniesController {
   }
 
   @Patch(':id')
+  @Roles(...OFFICE_WRITE_ROLES)
   update(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -66,6 +60,7 @@ export class CompaniesController {
   }
 
   @Delete(':id')
+  @Roles(...OFFICE_WRITE_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     await this.companiesService.softDelete(tenant, id);

@@ -1,15 +1,10 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { ReportsService } from './reports.service';
 
 @ApiTags('reports')
-@ApiHeader({
-  name: 'x-office-id',
-  description: 'Temporary MVP tenant header. Later this comes from the JWT.',
-  required: true,
-})
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}

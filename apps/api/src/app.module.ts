@@ -1,6 +1,10 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AccountingModule } from './accounting/accounting.module';
+import { AuditModule } from './audit/audit.module';
+import { BackupsModule } from './backups/backups.module';
+import { AuthModule } from './auth/auth.module';
 import { validateEnvironment } from './common/config/env.validation';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { ClientSetupModule } from './client-setup/client-setup.module';
@@ -14,6 +18,7 @@ import { ImportsModule } from './imports/imports.module';
 import { MyDataModule } from './mydata/mydata.module';
 import { ObligationsModule } from './obligations/obligations.module';
 import { ReportsModule } from './reports/reports.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -31,7 +36,11 @@ import { ReportsModule } from './reports/reports.module';
       }),
     }),
     PrismaModule,
+    AuthModule,
     HealthModule,
+    AuditModule,
+    BackupsModule,
+    AccountingModule,
     CompaniesModule,
     ClientSetupModule,
     DocumentsModule,
@@ -42,6 +51,7 @@ import { ReportsModule } from './reports/reports.module';
     ImportsModule,
     DeclarationsModule,
     ReportsModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

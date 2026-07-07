@@ -10,7 +10,9 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
+import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { CounterpartiesService } from './counterparties.service';
@@ -19,11 +21,6 @@ import { FindCounterpartiesQueryDto } from './dto/find-counterparties-query.dto'
 import { UpdateCounterpartyDto } from './dto/update-counterparty.dto';
 
 @ApiTags('counterparties')
-@ApiHeader({
-  name: 'x-office-id',
-  description: 'Temporary MVP tenant header. Later this comes from the JWT.',
-  required: true,
-})
 @Controller('counterparties')
 export class CounterpartiesController {
   constructor(private readonly counterpartiesService: CounterpartiesService) {}
@@ -34,11 +31,13 @@ export class CounterpartiesController {
   }
 
   @Post()
+  @Roles(...OFFICE_WRITE_ROLES)
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateCounterpartyDto) {
     return this.counterpartiesService.create(tenant, dto);
   }
 
   @Patch(':id')
+  @Roles(...OFFICE_WRITE_ROLES)
   update(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -48,6 +47,7 @@ export class CounterpartiesController {
   }
 
   @Delete(':id')
+  @Roles(...OFFICE_WRITE_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     await this.counterpartiesService.softDelete(tenant, id);

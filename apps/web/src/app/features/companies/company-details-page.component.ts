@@ -1,14 +1,16 @@
 import { AsyncPipe, DatePipe, DecimalPipe, NgFor, NgIf } from '@angular/common';
 import { Component, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { BehaviorSubject, map, switchMap } from 'rxjs';
 import { CompaniesApiService } from '../../core/api/companies-api.service';
 import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-api.service';
+import { MyDataApiService } from '../../core/api/mydata-api.service';
 
 @Component({
   selector: 'ol-company-details-page',
   standalone: true,
-  imports: [AsyncPipe, DatePipe, DecimalPipe, NgFor, NgIf, RouterLink],
+  imports: [AsyncPipe, DatePipe, DecimalPipe, FormsModule, NgFor, NgIf, RouterLink],
   template: `
     <ng-container *ngIf="company$ | async as company">
       <section class="page-header">
@@ -201,6 +203,120 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
           </ng-container>
         </div>
 
+        <div class="card detail-section reconciliation-section">
+          <div class="card-header">
+            <h2 class="card-title">
+              <span class="material-symbols-outlined">sync_alt</span>
+              Συμφωνία myDATA με ΑΑΔΕ
+            </h2>
+          </div>
+          <div class="reconciliation-controls">
+            <label class="field">
+              <span class="field-label">Ροή</span>
+              <select [(ngModel)]="myDataSyncSource">
+                <option value="REQUEST_DOCS">Παραστατικά που με αφορούν</option>
+                <option value="REQUEST_TRANSMITTED_DOCS">Παραστατικά που έχω διαβιβάσει</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Από</span>
+              <input type="date" [(ngModel)]="myDataDateFrom" />
+            </label>
+            <label class="field">
+              <span class="field-label">Έως</span>
+              <input type="date" [(ngModel)]="myDataDateTo" />
+            </label>
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="isSyncingMyData"
+              (click)="syncMyData(company.id)"
+            >
+              <span class="material-symbols-outlined">cloud_sync</span>
+              {{ isSyncingMyData ? 'Συγχρονισμός...' : 'Συγχρονισμός από ΑΑΔΕ' }}
+            </button>
+            <p class="field-note" *ngIf="myDataSyncStatus">{{ myDataSyncStatus }}</p>
+            <p class="field-error" *ngIf="myDataSyncError">{{ myDataSyncError }}</p>
+          </div>
+
+          <ng-container *ngIf="reconciliation$ | async as reconciliation">
+            <div class="movement-summary">
+              <div>
+                <span>Εγγραφές ΑΑΔΕ</span>
+                <strong>{{ reconciliation.length }}</strong>
+              </div>
+              <div>
+                <span>Ταιριασμένα</span>
+                <strong>{{ reconciliationStatusCount(reconciliation, 'MATCHED') }}</strong>
+              </div>
+              <div>
+                <span>Λείπουν στο ERP</span>
+                <strong>{{ reconciliationStatusCount(reconciliation, 'MISSING_INTERNAL') }}</strong>
+              </div>
+              <div>
+                <span>Διαφορές</span>
+                <strong>{{ reconciliationMismatchCount(reconciliation) }}</strong>
+              </div>
+            </div>
+            <div class="setup-empty" *ngIf="reconciliation.length === 0">
+              Δεν υπάρχει ακόμα συγχρονισμένο snapshot από ΑΑΔΕ για αυτόν τον πελάτη.
+            </div>
+            <div class="movement-table" *ngIf="reconciliation.length > 0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ημερ.</th>
+                    <th>Παραστατικό ΑΑΔΕ</th>
+                    <th>Αντισυμβαλλόμενος</th>
+                    <th class="tr">Σύνολο ΑΑΔΕ</th>
+                    <th>Κατάσταση</th>
+                    <th>ERP match</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of reconciliation">
+                    <td>{{ item.issueDate | date: 'dd/MM/yy' }}</td>
+                    <td>
+                      <strong>{{ item.series || '-' }}/{{ item.documentNumber }}</strong>
+                      <small>MARK {{ item.mark }}</small>
+                    </td>
+                    <td>
+                      {{ item.issuerVatNumber || item.counterpartyVatNumber || '-' }}
+                      <small>{{ item.invoiceType || '-' }}</small>
+                    </td>
+                    <td class="tr">{{ item.totalAmount | number: '1.2-2' }}</td>
+                    <td>
+                      <span
+                        class="badge"
+                        [class.badge-success]="item.reconciliationStatus === 'MATCHED'"
+                        [class.badge-warning]="item.reconciliationStatus !== 'MATCHED'"
+                      >
+                        {{ reconciliationStatusLabel(item.reconciliationStatus) }}
+                      </span>
+                      <small *ngIf="item.reconciliationIssues?.fields?.length">
+                        {{ item.reconciliationIssues.fields.join(', ') }}
+                      </small>
+                    </td>
+                    <td>
+                      <ng-container *ngIf="item.matchedDocument; else noMatch">
+                        <strong>
+                          {{ item.matchedDocument.series || '-' }}/{{
+                            item.matchedDocument.documentNumber
+                          }}
+                        </strong>
+                        <small>{{ documentTypeLabel(item.matchedDocument.documentType) }}</small>
+                      </ng-container>
+                      <ng-template #noMatch>
+                        <span class="muted">Δεν βρέθηκε</span>
+                      </ng-template>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </ng-container>
+        </div>
+
         <div class="card detail-section movements-section">
           <div class="card-header">
             <h2 class="card-title">
@@ -314,17 +430,23 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
       }
 
       .setup-section,
-      .movements-section {
+      .movements-section,
+      .reconciliation-section {
         grid-column: 1 / -1;
       }
 
-      .setup-panel {
+      .setup-panel,
+      .reconciliation-controls {
         display: grid;
         grid-template-columns: minmax(260px, 1fr) auto;
         gap: 12px;
         align-items: end;
         padding: 16px 18px;
         border-bottom: 1px solid var(--border);
+      }
+
+      .reconciliation-controls {
+        grid-template-columns: 1.3fr repeat(2, minmax(140px, 0.5fr)) auto;
       }
 
       .field {
@@ -427,6 +549,10 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
         color: var(--muted);
       }
 
+      .muted {
+        color: var(--muted);
+      }
+
       .tr {
         text-align: right;
       }
@@ -437,6 +563,7 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
         }
 
         .setup-panel,
+        .reconciliation-controls,
         .setup-list,
         .setup-row,
         .movement-summary {
@@ -454,12 +581,20 @@ export class CompanyDetailsPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly companiesApi = inject(CompaniesApiService);
   private readonly documentsApi = inject(DocumentsApiService);
+  private readonly myDataApi = inject(MyDataApiService);
   private readonly setupReload$ = new BehaviorSubject<void>(undefined);
+  private readonly reconciliationReload$ = new BehaviorSubject<void>(undefined);
 
   selectedTemplateId = '';
   isApplyingSetup = false;
   setupStatus = '';
   setupError = '';
+  isSyncingMyData = false;
+  myDataSyncStatus = '';
+  myDataSyncError = '';
+  myDataSyncSource: 'REQUEST_DOCS' | 'REQUEST_TRANSMITTED_DOCS' = 'REQUEST_DOCS';
+  myDataDateFrom = firstDayOfCurrentMonth();
+  myDataDateTo = today();
 
   readonly company$ = this.route.paramMap.pipe(
     map((params) => params.get('id') ?? ''),
@@ -489,6 +624,12 @@ export class CompanyDetailsPageComponent {
     })),
   );
 
+  readonly reconciliation$ = this.reconciliationReload$.pipe(
+    switchMap(() => this.route.paramMap),
+    map((params) => params.get('id') ?? ''),
+    switchMap((id) => this.myDataApi.findReconciliation(id)),
+  );
+
   applySetupTemplate(companyId: string): void {
     if (!this.selectedTemplateId) {
       return;
@@ -512,6 +653,58 @@ export class CompanyDetailsPageComponent {
           : (message ?? 'Δεν ολοκληρώθηκε η εφαρμογή προτύπου.');
       },
     });
+  }
+
+  syncMyData(companyId: string): void {
+    this.isSyncingMyData = true;
+    this.myDataSyncStatus = '';
+    this.myDataSyncError = '';
+
+    this.myDataApi
+      .sync({
+        clientCompanyId: companyId,
+        source: this.myDataSyncSource,
+        mark: '0',
+        dateFrom: this.myDataDateFrom,
+        dateTo: this.myDataDateTo,
+      })
+      .subscribe({
+        next: (result) => {
+          this.isSyncingMyData = false;
+          this.myDataSyncStatus = `Λήφθηκαν ${result.fetchedCount}, ταιριάστηκαν ${result.matchedCount}, διαφορές ${result.mismatchCount}.`;
+          this.reconciliationReload$.next();
+        },
+        error: (error: { error?: { message?: string | string[] }; message?: string }) => {
+          this.isSyncingMyData = false;
+          const message = error.error?.message ?? error.message;
+          this.myDataSyncError = Array.isArray(message)
+            ? message.join(', ')
+            : (message ?? 'Δεν ολοκληρώθηκε ο συγχρονισμός myDATA.');
+        },
+      });
+  }
+
+  reconciliationStatusCount(items: { reconciliationStatus: string }[], status: string): number {
+    return items.filter((item) => item.reconciliationStatus === status).length;
+  }
+
+  reconciliationMismatchCount(items: { reconciliationStatus: string }[]): number {
+    return items.filter(
+      (item) => !['MATCHED', 'MISSING_INTERNAL'].includes(item.reconciliationStatus),
+    ).length;
+  }
+
+  reconciliationStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      MATCHED: 'Ταιριάζει',
+      MISSING_INTERNAL: 'Λείπει στο ERP',
+      AMOUNT_MISMATCH: 'Διαφορά ποσών',
+      DATE_MISMATCH: 'Διαφορά ημερομηνίας',
+      TYPE_MISMATCH: 'Διαφορά τύπου',
+      COUNTERPARTY_MISMATCH: 'Διαφορά ΑΦΜ',
+    };
+
+    return labels[status] ?? status;
   }
 
   setupKindLabel(kind: string): string {
@@ -599,8 +792,8 @@ export class CompanyDetailsPageComponent {
 
   myDataModeLabel(value: string): string {
     const labels: Record<string, string> = {
-      ACCOUNTING_OFFICE_AUTHORIZED: 'Με εξουσιοδότηση λογιστικού γραφείου',
-      OWN_API_CREDENTIALS_ENV_REF: 'Με δικά του API credentials από env',
+      ACCOUNTING_OFFICE_AUTHORIZED: 'Με myDATA API credentials λογιστικού γραφείου',
+      OWN_API_CREDENTIALS_ENV_REF: 'Με ξεχωριστά API credentials πελάτη',
       MANUAL_UPLOAD: 'Χειροκίνητη αποστολή/ανέβασμα',
       NOT_CONFIGURED: 'Δεν έχει ρυθμιστεί',
     };
@@ -613,4 +806,16 @@ function sumByMovement(documents: DocumentListItem[], movementCodes: string[]): 
   return documents
     .filter((document) => movementCodes.includes(document.movementCode ?? ''))
     .reduce((sum, document) => sum + Number(document.netAmount || 0), 0);
+}
+
+function firstDayOfCurrentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function today(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(2, '0')}`;
 }

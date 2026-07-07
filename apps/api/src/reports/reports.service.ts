@@ -8,30 +8,37 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async officeSummary(tenant: TenantContext) {
-    const [clients, documents, obligations, fixedAssets, failedMyData] = await Promise.all([
-      this.prisma.clientCompany.count({
-        where: { accountingOfficeId: tenant.accountingOfficeId, deletedAt: null },
-      }),
-      this.prisma.document.count({
-        where: { accountingOfficeId: tenant.accountingOfficeId, deletedAt: null },
-      }),
-      this.prisma.officeObligation.count({
-        where: {
-          accountingOfficeId: tenant.accountingOfficeId,
-          status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING_CLIENT', 'READY_TO_SUBMIT'] },
-        },
-      }),
-      this.prisma.fixedAsset.count({
-        where: { accountingOfficeId: tenant.accountingOfficeId, status: 'ACTIVE' },
-      }),
-      this.prisma.document.count({
-        where: {
-          accountingOfficeId: tenant.accountingOfficeId,
-          deletedAt: null,
-          myDataStatus: MyDataStatus.FAILED,
-        },
-      }),
-    ]);
+    const [clients, documents, obligations, fixedAssets, failedMyData, postedJournalEntries] =
+      await Promise.all([
+        this.prisma.clientCompany.count({
+          where: { accountingOfficeId: tenant.accountingOfficeId, deletedAt: null },
+        }),
+        this.prisma.document.count({
+          where: { accountingOfficeId: tenant.accountingOfficeId, deletedAt: null },
+        }),
+        this.prisma.officeObligation.count({
+          where: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING_CLIENT', 'READY_TO_SUBMIT'] },
+          },
+        }),
+        this.prisma.fixedAsset.count({
+          where: { accountingOfficeId: tenant.accountingOfficeId, status: 'ACTIVE' },
+        }),
+        this.prisma.document.count({
+          where: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            deletedAt: null,
+            myDataStatus: MyDataStatus.FAILED,
+          },
+        }),
+        this.prisma.journalEntry.count({
+          where: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            status: 'POSTED',
+          },
+        }),
+      ]);
 
     return {
       clients,
@@ -39,6 +46,7 @@ export class ReportsService {
       openObligations: obligations,
       activeFixedAssets: fixedAssets,
       failedMyData,
+      postedJournalEntries,
     };
   }
 

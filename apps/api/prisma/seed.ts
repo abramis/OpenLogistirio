@@ -4,6 +4,8 @@ import {
   DeclarationWorkpaperStatus,
   DeclarationWorkpaperType,
   FixedAssetCategory,
+  JournalEntrySource,
+  JournalEntryStatus,
   MyDataTransmissionMode,
   ObligationRecurrence,
   ObligationType,
@@ -306,7 +308,210 @@ async function main() {
     },
   });
 
+  await seedDefaultAccounting(firstCompany.id, office.id);
+  await seedDefaultAccounting(secondCompany.id, office.id);
+
   console.log('Seeded demo accounting office, users, client companies, and documents.');
+}
+
+async function seedDefaultAccounting(clientCompanyId: string, accountingOfficeId: string) {
+  const accounts = [
+    ['10.00', 'Ταμείο', 'ASSET', 'DEBIT'],
+    ['12.00', 'Πάγια στοιχεία', 'ASSET', 'DEBIT'],
+    ['12.99', 'Συσσωρευμένες αποσβέσεις παγίων', 'ASSET', 'CREDIT'],
+    ['20.00', 'Αγορές και έξοδα', 'EXPENSE', 'DEBIT'],
+    ['30.00', 'Πελάτες', 'ASSET', 'DEBIT'],
+    ['40.00', 'Κεφάλαιο / καθαρή θέση', 'EQUITY', 'CREDIT'],
+    ['50.00', 'Προμηθευτές', 'LIABILITY', 'CREDIT'],
+    ['54.00', 'ΦΠΑ εκροών', 'LIABILITY', 'CREDIT'],
+    ['54.01', 'ΦΠΑ εισροών', 'ASSET', 'DEBIT'],
+    ['66.00', 'Αποσβέσεις χρήσης', 'EXPENSE', 'DEBIT'],
+    ['70.00', 'Έσοδα πωλήσεων', 'REVENUE', 'CREDIT'],
+  ] as const;
+
+  for (const [code, name, type, normalBalance] of accounts) {
+    await prisma.chartAccount.upsert({
+      where: { clientCompanyId_code: { clientCompanyId, code } },
+      update: { name, type, normalBalance, isActive: true },
+      create: {
+        accountingOfficeId,
+        clientCompanyId,
+        code,
+        name,
+        type,
+        normalBalance,
+      },
+    });
+  }
+
+  const postingRules = [
+    [
+      'SALE_INVOICE',
+      'Τιμολόγιο πώλησης',
+      'SALES_INVOICE',
+      'SALE_INVOICE',
+      'SALES',
+      '30.00',
+      'DEBIT',
+      '70.00',
+      'CREDIT',
+      '54.00',
+      'CREDIT',
+    ],
+    [
+      'RETAIL_RECEIPT',
+      'Απόδειξη λιανικής',
+      'RETAIL_RECEIPT',
+      'SALE_INVOICE',
+      'SALES',
+      '10.00',
+      'DEBIT',
+      '70.00',
+      'CREDIT',
+      '54.00',
+      'CREDIT',
+    ],
+    [
+      'PURCHASE_INVOICE',
+      'Τιμολόγιο αγοράς/δαπάνης',
+      'PURCHASE_INVOICE',
+      'PURCHASE_INVOICE',
+      'PURCHASES',
+      '50.00',
+      'CREDIT',
+      '20.00',
+      'DEBIT',
+      '54.01',
+      'DEBIT',
+    ],
+    [
+      'CREDIT_NOTE',
+      'Πιστωτικό πώλησης',
+      'CREDIT_NOTE',
+      'CREDIT_NOTE',
+      'SALES',
+      '30.00',
+      'CREDIT',
+      '70.00',
+      'DEBIT',
+      '54.00',
+      'DEBIT',
+    ],
+  ] as const;
+
+  for (const [
+    code,
+    name,
+    documentType,
+    movementCode,
+    journalCode,
+    counterpartyAccountCode,
+    counterpartySide,
+    netAccountCode,
+    netSide,
+    vatAccountCode,
+    vatSide,
+  ] of postingRules) {
+    await prisma.documentPostingRule.upsert({
+      where: { clientCompanyId_code: { clientCompanyId, code } },
+      update: {
+        name,
+        documentType,
+        movementCode,
+        journalCode,
+        counterpartyAccountCode,
+        counterpartySide,
+        netAccountCode,
+        netSide,
+        vatAccountCode,
+        vatSide,
+        isActive: true,
+      },
+      create: {
+        accountingOfficeId,
+        clientCompanyId,
+        code,
+        name,
+        documentType,
+        movementCode,
+        journalCode,
+        counterpartyAccountCode,
+        counterpartySide,
+        netAccountCode,
+        netSide,
+        vatAccountCode,
+        vatSide,
+      },
+    });
+  }
+
+  for (let month = 1; month <= 12; month += 1) {
+    await prisma.accountingPeriod.upsert({
+      where: {
+        clientCompanyId_fiscalYear_periodMonth: {
+          clientCompanyId,
+          fiscalYear: 2026,
+          periodMonth: month,
+        },
+      },
+      update: {},
+      create: {
+        accountingOfficeId,
+        clientCompanyId,
+        fiscalYear: 2026,
+        periodMonth: month,
+        startsAt: new Date(Date.UTC(2026, month - 1, 1)),
+        endsAt: new Date(Date.UTC(2026, month, 0, 23, 59, 59, 999)),
+      },
+    });
+  }
+
+  const existingOpening = await prisma.journalEntry.findFirst({
+    where: {
+      clientCompanyId,
+      entryNumber: 'OPEN-2026-00001',
+    },
+  });
+
+  if (!existingOpening) {
+    const cash = await prisma.chartAccount.findUniqueOrThrow({
+      where: { clientCompanyId_code: { clientCompanyId, code: '10.00' } },
+    });
+    const equity = await prisma.chartAccount.findUniqueOrThrow({
+      where: { clientCompanyId_code: { clientCompanyId, code: '40.00' } },
+    });
+
+    await prisma.journalEntry.create({
+      data: {
+        accountingOfficeId,
+        clientCompanyId,
+        entryNumber: 'OPEN-2026-00001',
+        entryDate: new Date('2026-01-01T00:00:00.000Z'),
+        fiscalYear: 2026,
+        periodMonth: 1,
+        source: JournalEntrySource.OPENING,
+        status: JournalEntryStatus.POSTED,
+        description: 'Δοκιμαστική εγγραφή ανοίγματος',
+        postedAt: new Date(),
+        lines: {
+          create: [
+            {
+              accountId: cash.id,
+              lineNumber: 1,
+              description: 'Ταμειακό υπόλοιπο έναρξης',
+              debit: '1000.00',
+            },
+            {
+              accountId: equity.id,
+              lineNumber: 2,
+              description: 'Κεφάλαιο έναρξης',
+              credit: '1000.00',
+            },
+          ],
+        },
+      },
+    });
+  }
 }
 
 main()

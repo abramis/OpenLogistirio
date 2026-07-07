@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -9,6 +9,7 @@ export interface OfficeSummaryReport {
   openObligations: number;
   activeFixedAssets: number;
   failedMyData: number;
+  postedJournalEntries: number;
 }
 
 export interface VatSummaryRow {
@@ -28,9 +29,7 @@ export class ReportsApiService {
   private readonly baseUrl = `${environment.apiBaseUrl}/reports`;
 
   officeSummary(): Observable<OfficeSummaryReport> {
-    return this.http.get<OfficeSummaryReport>(`${this.baseUrl}/office-summary`, {
-      headers: this.headers,
-    });
+    return this.http.get<OfficeSummaryReport>(`${this.baseUrl}/office-summary`, {});
   }
 
   vatSummary(year: number, clientCompanyId = ''): Observable<VatSummaryRow[]> {
@@ -40,12 +39,7 @@ export class ReportsApiService {
     }
 
     return this.http.get<VatSummaryRow[]>(`${this.baseUrl}/vat-summary`, {
-      headers: this.headers,
       params,
     });
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({ 'x-office-id': 'office-athens-demo' });
   }
 }

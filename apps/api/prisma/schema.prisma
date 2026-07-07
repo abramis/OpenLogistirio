@@ -128,6 +128,59 @@ enum DeclarationWorkpaperStatus {
   ARCHIVED
 }
 
+enum ChartAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum JournalEntrySource {
+  MANUAL
+  DOCUMENT
+  FIXED_ASSET
+  OPENING
+  CLOSING
+  ADJUSTMENT
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  VOID
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+  LOCKED
+}
+
+enum MyDataSyncSource {
+  REQUEST_DOCS
+  REQUEST_TRANSMITTED_DOCS
+}
+
+enum MyDataSyncRunStatus {
+  COMPLETED
+  FAILED
+}
+
+enum MyDataReconciliationStatus {
+  MATCHED
+  MISSING_INTERNAL
+  AMOUNT_MISMATCH
+  DATE_MISMATCH
+  TYPE_MISMATCH
+  COUNTERPARTY_MISMATCH
+}
+
 model AccountingOffice {
   id        String   @id @default(cuid())
   name      String
@@ -147,24 +200,66 @@ model AccountingOffice {
   counterparties        Counterparty[]
   importBatches         ImportBatch[]
   declarationWorkpapers DeclarationWorkpaper[]
+  chartAccounts         ChartAccount[]
+  documentPostingRules  DocumentPostingRule[]
+  accountingPeriods     AccountingPeriod[]
+  journalEntries        JournalEntry[]
   auditLogs             AuditLog[]
+  myDataSyncRuns        MyDataSyncRun[]
+  myDataSnapshots       MyDataSnapshot[]
 }
 
 model User {
-  id                 String   @id @default(cuid())
-  accountingOfficeId String
-  email              String   @unique
-  passwordHash       String
-  fullName           String
-  role               UserRole
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  accountingOfficeId  String
+  email               String    @unique
+  passwordHash        String
+  fullName            String
+  role                UserRole
+  disabledAt          DateTime?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  passwordChangedAt   DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  accountingOffice    AccountingOffice   @relation(fields: [accountingOfficeId], references: [id])
+  accountingOffice    AccountingOffice     @relation(fields: [accountingOfficeId], references: [id])
   auditLogs           AuditLog[]
-  assignedObligations OfficeObligation[] @relation("AssignedObligations")
+  assignedObligations OfficeObligation[]   @relation("AssignedObligations")
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([accountingOfficeId])
+  @@index([disabledAt])
+  @@index([lockedUntil])
+}
+
+model RefreshToken {
+  id                String    @id @default(cuid())
+  userId            String
+  jwtId             String    @unique @db.VarChar(80)
+  tokenHash         String    @unique @db.VarChar(128)
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?
+  createdAt         DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.VarChar(128)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, usedAt, expiresAt])
 }
 
 model ClientCompany {
@@ -199,9 +294,152 @@ model ClientCompany {
   counterparties        Counterparty[]
   importBatches         ImportBatch[]
   declarationWorkpapers DeclarationWorkpaper[]
+  chartAccounts         ChartAccount[]
+  documentPostingRules  DocumentPostingRule[]
+  accountingPeriods     AccountingPeriod[]
+  journalEntries        JournalEntry[]
+  myDataSyncRuns        MyDataSyncRun[]
+  myDataSnapshots       MyDataSnapshot[]
 
   @@unique([accountingOfficeId, vatNumber])
   @@index([accountingOfficeId, deletedAt])
+}
+
+model ChartAccount {
+  id                 String           @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  code               String           @db.VarChar(40)
+  name               String
+  type               ChartAccountType
+  normalBalance      NormalBalance
+  parentId           String?
+  isControl          Boolean          @default(false)
+  isActive           Boolean          @default(true)
+  taxCategory        String?          @db.VarChar(80)
+  myDataCategory     String?          @db.VarChar(80)
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  accountingOffice AccountingOffice   @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany      @relation(fields: [clientCompanyId], references: [id])
+  parent           ChartAccount?      @relation("ChartAccountTree", fields: [parentId], references: [id])
+  children         ChartAccount[]     @relation("ChartAccountTree")
+  journalLines     JournalEntryLine[]
+
+  @@unique([clientCompanyId, code])
+  @@index([accountingOfficeId, clientCompanyId, type])
+  @@index([parentId])
+}
+
+model DocumentPostingRule {
+  id                      String         @id @default(cuid())
+  accountingOfficeId      String
+  clientCompanyId         String
+  code                    String         @db.VarChar(80)
+  name                    String
+  documentType            DocumentType?
+  movementCode            String?        @db.VarChar(80)
+  journalCode             String?        @db.VarChar(80)
+  counterpartyAccountCode String         @db.VarChar(40)
+  counterpartySide        NormalBalance
+  netAccountCode          String         @db.VarChar(40)
+  netSide                 NormalBalance
+  vatAccountCode          String?        @db.VarChar(40)
+  vatSide                 NormalBalance?
+  isActive                Boolean        @default(true)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@unique([clientCompanyId, code], map: "DocPostingRule_client_code_key")
+  @@index([accountingOfficeId, clientCompanyId, isActive], map: "DocPostingRule_office_client_active_idx")
+  @@index([clientCompanyId, movementCode], map: "DocPostingRule_client_movement_idx")
+  @@index([clientCompanyId, documentType], map: "DocPostingRule_client_doc_type_idx")
+}
+
+model AccountingPeriod {
+  id                 String                 @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  fiscalYear         Int
+  periodMonth        Int
+  startsAt           DateTime
+  endsAt             DateTime
+  status             AccountingPeriodStatus @default(OPEN)
+  closedAt           DateTime?
+  lockedAt           DateTime?
+  notes              String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@unique([clientCompanyId, fiscalYear, periodMonth])
+  @@index([accountingOfficeId, clientCompanyId, status])
+}
+
+model JournalEntry {
+  id                 String             @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  entryNumber        String             @db.VarChar(80)
+  entryDate          DateTime
+  fiscalYear         Int
+  periodMonth        Int
+  source             JournalEntrySource
+  status             JournalEntryStatus @default(POSTED)
+  description        String
+  reference          String?
+  postedAt           DateTime?
+  voidedAt           DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  accountingOffice  AccountingOffice                       @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany     ClientCompany                          @relation(fields: [clientCompanyId], references: [id])
+  lines             JournalEntryLine[]
+  documentLinks     DocumentAccountingLink[]
+  depreciationLinks FixedAssetDepreciationAccountingLink[]
+
+  @@unique([clientCompanyId, entryNumber])
+  @@index([accountingOfficeId, clientCompanyId, entryDate])
+  @@index([clientCompanyId, fiscalYear, periodMonth, status])
+}
+
+model JournalEntryLine {
+  id             String   @id @default(cuid())
+  journalEntryId String
+  accountId      String
+  lineNumber     Int
+  description    String?
+  debit          Decimal  @default(0) @db.Decimal(12, 2)
+  credit         Decimal  @default(0) @db.Decimal(12, 2)
+  taxCode        String?  @db.VarChar(40)
+  createdAt      DateTime @default(now())
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+  account      ChartAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([journalEntryId, lineNumber])
+  @@index([accountId])
+}
+
+model DocumentAccountingLink {
+  id             String   @id @default(cuid())
+  documentId     String
+  journalEntryId String
+  createdAt      DateTime @default(now())
+
+  document     Document     @relation(fields: [documentId], references: [id])
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+
+  @@unique([documentId])
+  @@unique([journalEntryId])
 }
 
 model ClientSetupItem {
@@ -332,10 +570,24 @@ model FixedAssetDepreciationEntry {
   posted            Boolean  @default(false)
   createdAt         DateTime @default(now())
 
-  fixedAsset FixedAsset @relation(fields: [fixedAssetId], references: [id])
+  fixedAsset      FixedAsset                             @relation(fields: [fixedAssetId], references: [id])
+  accountingLinks FixedAssetDepreciationAccountingLink[]
 
   @@unique([fixedAssetId, fiscalYear])
   @@index([fixedAssetId, fiscalYear])
+}
+
+model FixedAssetDepreciationAccountingLink {
+  id                  String   @id @default(cuid())
+  depreciationEntryId String
+  journalEntryId      String
+  createdAt           DateTime @default(now())
+
+  depreciationEntry FixedAssetDepreciationEntry @relation(fields: [depreciationEntryId], references: [id])
+  journalEntry      JournalEntry                @relation(fields: [journalEntryId], references: [id])
+
+  @@unique([depreciationEntryId], map: "DepAcctLink_depreciation_key")
+  @@unique([journalEntryId], map: "DepAcctLink_journal_key")
 }
 
 model OfficeObligation {
@@ -391,9 +643,11 @@ model Document {
   updatedAt             DateTime     @updatedAt
   deletedAt             DateTime?
 
-  accountingOffice     AccountingOffice      @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany        ClientCompany         @relation(fields: [clientCompanyId], references: [id])
+  accountingOffice     AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany        ClientCompany            @relation(fields: [clientCompanyId], references: [id])
   transmissionAttempts TransmissionAttempt[]
+  accountingLinks      DocumentAccountingLink[]
+  myDataSnapshotMatches MyDataSnapshot[]         @relation("MyDataSnapshotMatchedDocument")
 
   @@index([accountingOfficeId, clientCompanyId, issueDate])
   @@index([accountingOfficeId, myDataStatus])
@@ -401,10 +655,76 @@ model Document {
   @@index([clientCompanyId, journalCode, issueDate])
 }
 
+model MyDataSyncRun {
+  id                 String              @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  source             MyDataSyncSource
+  status             MyDataSyncRunStatus
+  environment        String?             @db.VarChar(40)
+  endpoint           String?             @db.VarChar(255)
+  markFrom           String?             @db.VarChar(40)
+  maxMark            String?             @db.VarChar(40)
+  dateFrom           DateTime?
+  dateTo             DateTime?
+  fetchedCount       Int                 @default(0)
+  matchedCount       Int                 @default(0)
+  mismatchCount      Int                 @default(0)
+  errorMessage       String?
+  rawResponse        Json?
+  createdAt          DateTime            @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  snapshots        MyDataSnapshot[]
+
+  @@index([accountingOfficeId, clientCompanyId, createdAt], map: "MyDataSyncRun_office_client_created_idx")
+  @@index([source, status, createdAt], map: "MyDataSyncRun_source_status_created_idx")
+}
+
+model MyDataSnapshot {
+  id                       String                     @id @default(cuid())
+  accountingOfficeId       String
+  clientCompanyId          String
+  syncRunId                String
+  matchedDocumentId        String?
+  source                   MyDataSyncSource
+  reconciliationStatus     MyDataReconciliationStatus
+  reconciliationIssues     Json?
+  mark                     String                     @db.VarChar(40)
+  uid                      String?                    @db.VarChar(120)
+  qrUrl                    String?
+  issuerVatNumber          String?                    @db.VarChar(20)
+  counterpartyVatNumber    String?                    @db.VarChar(20)
+  invoiceType              String?                    @db.VarChar(20)
+  series                   String?                    @db.VarChar(80)
+  documentNumber           String                     @db.VarChar(80)
+  issueDate                DateTime?
+  netAmount                Decimal?                   @db.Decimal(12, 2)
+  vatAmount                Decimal?                   @db.Decimal(12, 2)
+  totalAmount              Decimal?                   @db.Decimal(12, 2)
+  rawPayload               Json
+  fetchedAt                DateTime                   @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  syncRun          MyDataSyncRun    @relation(fields: [syncRunId], references: [id])
+  matchedDocument  Document?        @relation("MyDataSnapshotMatchedDocument", fields: [matchedDocumentId], references: [id])
+
+  @@unique([clientCompanyId, source, mark])
+  @@index([accountingOfficeId, clientCompanyId, reconciliationStatus], map: "MyDataSnapshot_office_client_status_idx")
+  @@index([clientCompanyId, issueDate], map: "MyDataSnapshot_client_issue_idx")
+  @@index([matchedDocumentId], map: "MyDataSnapshot_matched_doc_idx")
+}
+
 model TransmissionAttempt {
   id              String             @id @default(cuid())
   documentId      String
   provider        String
+  environment     String?            @db.VarChar(40)
+  endpoint        String?            @db.VarChar(255)
+  correlationId   String?            @db.VarChar(80)
+  forcedRetry     Boolean            @default(false)
   status          TransmissionStatus
   requestPayload  String             @db.LongText
   responsePayload Json?
@@ -415,6 +735,8 @@ model TransmissionAttempt {
   document Document @relation(fields: [documentId], references: [id])
 
   @@index([documentId, createdAt])
+  @@index([provider, environment, createdAt])
+  @@index([correlationId])
 }
 
 model AuditLog {

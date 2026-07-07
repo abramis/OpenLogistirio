@@ -184,24 +184,34 @@ import {
           <span class="field-label">Τρόπος διαβίβασης</span>
           <select formControlName="myDataMode">
             <option value="ACCOUNTING_OFFICE_AUTHORIZED">
-              Με εξουσιοδότηση προς το λογιστικό γραφείο
+              Με τα myDATA API credentials του λογιστικού γραφείου
             </option>
-            <option value="OWN_API_CREDENTIALS_ENV_REF">Με δικά του API credentials από env</option>
+            <option value="OWN_API_CREDENTIALS_ENV_REF">
+              Με ξεχωριστά API credentials του πελάτη
+            </option>
             <option value="MANUAL_UPLOAD">Χειροκίνητη αποστολή / ανέβασμα</option>
             <option value="NOT_CONFIGURED">Δεν έχει ρυθμιστεί</option>
           </select>
         </label>
-        <label class="field wide toggle-field">
+        <label class="field wide toggle-field" *ngIf="isOfficeAuthorizedMode()">
           <input formControlName="myDataAuthorized" type="checkbox" class="toggle-input" />
           <span>Υπάρχει εξουσιοδότηση για "Διαχείριση Ηλεκτρονικών Βιβλίων"</span>
         </label>
-        <label class="field">
-          <span class="field-label">Env reference credentials</span>
+        <label class="field" *ngIf="isOwnApiCredentialsMode()">
+          <span class="field-label">Κωδικός αναφοράς credentials <span class="req">*</span></span>
           <input formControlName="myDataCredentialRef" placeholder="π.χ. CLIENT_111222333" />
+          <span class="field-error" *ngIf="showError('myDataCredentialRef', 'required')">
+            Ο κωδικός αναφοράς είναι υποχρεωτικός για ξεχωριστά credentials πελάτη.
+          </span>
           <span class="field-error" *ngIf="showError('myDataCredentialRef', 'pattern')">
             Χρησιμοποιήστε μόνο κεφαλαία λατινικά, αριθμούς και κάτω παύλα.
           </span>
         </label>
+        <p class="field-note wide" *ngIf="isOwnApiCredentialsMode()">
+          <span class="material-symbols-outlined">admin_panel_settings</span>
+          Το πεδίο αυτό συμπληρώνεται από τον διαχειριστή του συστήματος. Παράδειγμα:
+          CLIENT_111222333, με αντίστοιχα credentials φυλαγμένα μόνο στο .env του server.
+        </p>
         <p class="field-note wide">
           <span class="material-symbols-outlined">info</span>
           Δεν αποθηκεύονται TAXISnet κωδικοί ή πραγματικά subscription keys στη βάση.
@@ -434,6 +444,10 @@ export class CompanyFormPageComponent implements OnInit {
 
   ngOnInit(): void {
     this.companyId = this.route.snapshot.paramMap.get('id');
+    this.updateMyDataCredentialValidators();
+    this.form.controls.myDataMode.valueChanges.subscribe(() => {
+      this.updateMyDataCredentialValidators();
+    });
 
     if (this.companyId) {
       this.companiesApi.findOne(this.companyId).subscribe((company) => {
@@ -467,6 +481,14 @@ export class CompanyFormPageComponent implements OnInit {
 
   setActiveTab(tab: typeof this.activeTab): void {
     this.activeTab = tab;
+  }
+
+  isOfficeAuthorizedMode(): boolean {
+    return this.form.controls.myDataMode.value === 'ACCOUNTING_OFFICE_AUTHORIZED';
+  }
+
+  isOwnApiCredentialsMode(): boolean {
+    return this.form.controls.myDataMode.value === 'OWN_API_CREDENTIALS_ENV_REF';
   }
 
   lookupAadeRegistry(): void {
@@ -533,11 +555,31 @@ export class CompanyFormPageComponent implements OnInit {
       vatRegime: emptyToUndefined(value.vatRegime),
       accountingCategory: emptyToUndefined(value.accountingCategory),
       myDataMode: value.myDataMode,
-      myDataAuthorized: value.myDataAuthorized,
-      myDataCredentialRef: emptyToUndefined(value.myDataCredentialRef),
+      myDataAuthorized:
+        value.myDataMode === 'ACCOUNTING_OFFICE_AUTHORIZED' ? value.myDataAuthorized : false,
+      myDataCredentialRef:
+        value.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF'
+          ? emptyToUndefined(value.myDataCredentialRef)
+          : undefined,
       fiscalYearStart: value.fiscalYearStart,
       fiscalYearEnd: value.fiscalYearEnd,
     };
+  }
+
+  private updateMyDataCredentialValidators(): void {
+    const credentialRefControl = this.form.controls.myDataCredentialRef;
+
+    if (this.isOwnApiCredentialsMode()) {
+      credentialRefControl.setValidators([
+        Validators.required,
+        Validators.pattern(/^[A-Z0-9_]+$/),
+      ]);
+    } else {
+      credentialRefControl.setValidators([Validators.pattern(/^[A-Z0-9_]*$/)]);
+      credentialRefControl.setValue('', { emitEvent: false });
+    }
+
+    credentialRefControl.updateValueAndValidity({ emitEvent: false });
   }
 
   private applyAadeLookup(lookup: AadeRegistryCompanyLookup): void {

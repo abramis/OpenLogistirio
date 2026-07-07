@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -51,24 +51,18 @@ export class CounterpartiesApiService {
       Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''),
     );
 
-    return this.http.get<Counterparty[]>(this.baseUrl, { headers: this.headers, params });
+    return this.http.get<Counterparty[]>(this.baseUrl, { params });
   }
 
   create(payload: CounterpartyPayload): Observable<Counterparty> {
-    return this.http.post<Counterparty>(this.baseUrl, payload, { headers: this.headers });
+    return this.http.post<Counterparty>(this.baseUrl, payload, {});
   }
 
   update(id: string, payload: CounterpartyPayload): Observable<Counterparty> {
-    return this.http.patch<Counterparty>(`${this.baseUrl}/${id}`, payload, {
-      headers: this.headers,
-    });
+    return this.http.patch<Counterparty>(`${this.baseUrl}/${id}`, payload, {});
   }
 
   delete(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/${id}`, { headers: this.headers });
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({ 'x-office-id': 'office-athens-demo' });
+    return this.http.delete<void>(`${this.baseUrl}/${id}`, {});
   }
 }

@@ -247,6 +247,15 @@ import {
                 </button>
                 <button
                   type="button"
+                  class="btn btn-xs btn-danger"
+                  title="Forced AADE retry"
+                  [disabled]="!canForceAadeRetry(document)"
+                  (click)="forceSendTest(document)"
+                >
+                  <span class="material-symbols-outlined">sync_problem</span> Retry
+                </button>
+                <button
+                  type="button"
                   class="btn btn-xs btn-ghost"
                   title="Ιστορικό"
                   (click)="loadHistory(document)"
@@ -306,8 +315,12 @@ import {
             >{{ attempt.status }}</span
           >
           <span class="history-meta"
-            >{{ attempt.provider }} — {{ attempt.createdAt | date: 'dd/MM/yy HH:mm' }}</span
+            >{{ attempt.provider }}<ng-container *ngIf="attempt.environment">
+              / {{ attempt.environment }}</ng-container
+            >
+            - {{ attempt.createdAt | date: 'dd/MM/yy HH:mm' }}</span
           >
+          <small *ngIf="attempt.forcedRetry">forced retry</small>
           <small *ngIf="attempt.errorMessage">{{ attempt.errorMessage }}</small>
         </li>
       </ol>
@@ -567,7 +580,22 @@ export class DocumentsListPageComponent {
     this.clearMessages();
     this.documentsApi.sendTestMyData(document.id).subscribe({
       next: (response) => {
-        this.message = `AADE test send succeeded. MARK: ${response.mark || '-'}`;
+        this.message = `AADE send succeeded (${response.environment || 'configured'}). MARK: ${
+          response.mark || '-'
+        }`;
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  forceSendTest(document: DocumentListItem): void {
+    this.clearMessages();
+    this.documentsApi.sendTestMyData(document.id, true).subscribe({
+      next: (response) => {
+        this.message = `Forced AADE retry succeeded (${response.environment || 'configured'}). MARK: ${
+          response.mark || '-'
+        }`;
         this.reload$.next();
       },
       error: (error: unknown) => this.showError(error),
@@ -620,11 +648,20 @@ export class DocumentsListPageComponent {
       return false;
     }
 
+    if (document.myDataStatus === 'SENT') {
+      return false;
+    }
+
     return (
       (document.clientCompany.myDataMode === 'ACCOUNTING_OFFICE_AUTHORIZED' &&
         document.clientCompany.myDataAuthorized === true) ||
-      document.clientCompany.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF'
+      (document.clientCompany.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF' &&
+        Boolean(document.clientCompany.myDataCredentialRef))
     );
+  }
+
+  canForceAadeRetry(document: DocumentListItem): boolean {
+    return document.myDataStatus === 'SENT' && this.canUseAadeApi(document);
   }
 
   companyMyDataLabel(document: DocumentListItem): string {
@@ -643,6 +680,16 @@ export class DocumentsListPageComponent {
     };
 
     return labels[mode ?? ''] ?? 'AADE: αρρύθμιστο';
+  }
+
+  private canUseAadeApi(document: DocumentListItem): boolean {
+    return (
+      this.supportsSendInvoices(document) &&
+      ((document.clientCompany.myDataMode === 'ACCOUNTING_OFFICE_AUTHORIZED' &&
+        document.clientCompany.myDataAuthorized === true) ||
+        (document.clientCompany.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF' &&
+          Boolean(document.clientCompany.myDataCredentialRef)))
+    );
   }
 
   movementLabel(code?: string | null): string {

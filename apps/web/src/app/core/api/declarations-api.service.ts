@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -52,7 +52,6 @@ export class DeclarationsApiService {
   findWorkpapers(clientCompanyId = ''): Observable<DeclarationWorkpaper[]> {
     const params = clientCompanyId ? { clientCompanyId } : undefined;
     return this.http.get<DeclarationWorkpaper[]>(`${this.baseUrl}/workpapers`, {
-      headers: this.headers,
       params,
     });
   }
@@ -62,12 +61,10 @@ export class DeclarationsApiService {
     year: number;
     month?: number;
   }): Observable<DeclarationWorkpaper> {
-    return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/vat-workpaper/generate`, payload, {
-      headers: this.headers,
-    });
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({ 'x-office-id': 'office-athens-demo' });
+    return this.http.post<DeclarationWorkpaper>(
+      `${this.baseUrl}/vat-workpaper/generate`,
+      payload,
+      {},
+    );
   }
 }

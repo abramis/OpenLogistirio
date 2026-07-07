@@ -29,6 +29,8 @@ const document = {
   issueDate: new Date('2026-07-01T00:00:00.000Z'),
   counterpartyName: 'Customer & Co',
   counterpartyVatNumber: '123456789',
+  movementCode: 'SALE_INVOICE',
+  journalCode: 'SALES',
   netAmount: new Prisma.Decimal('100.00'),
   vatAmount: new Prisma.Decimal('24.00'),
   totalAmount: new Prisma.Decimal('124.00'),
@@ -131,7 +133,7 @@ describe('MyDataService', () => {
       }),
     };
     aadeTestProvider = {
-      providerName: 'aade-mydata-test',
+      providerName: 'aade-mydata',
       transmitInvoice: jest.fn(),
     };
 
@@ -173,6 +175,7 @@ describe('MyDataService', () => {
       documentId: 'document-1',
       payloadXml: expect.stringContaining('<InvoicesDoc'),
       credentialEnvPrefix: undefined,
+      force: undefined,
     });
     expect(prisma.document.update).toHaveBeenCalledWith({
       where: { id: 'document-1' },
@@ -225,11 +228,72 @@ describe('MyDataService', () => {
       documentId: 'document-1',
       payloadXml: expect.stringContaining('<InvoicesDoc'),
       credentialEnvPrefix: 'AADE_MYDATA',
+      force: undefined,
     });
     expect(prisma.transmissionAttempt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         documentId: 'document-1',
-        provider: 'aade-mydata-test',
+        provider: 'aade-mydata',
+        status: TransmissionStatus.SENT,
+      }),
+    });
+  });
+
+  it('does not overwrite already-sent documents on prepare', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      myDataStatus: MyDataStatus.SENT,
+      myDataMark: 'EXISTING-MARK',
+    });
+
+    await expect(service.prepare(tenant, 'document-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.document.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks duplicate sends unless forced', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      myDataStatus: MyDataStatus.SENT,
+      myDataMark: 'EXISTING-MARK',
+    });
+
+    await expect(service.sendTest(tenant, 'document-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(aadeTestProvider.transmitInvoice).not.toHaveBeenCalled();
+  });
+
+  it('records forced retries explicitly', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      myDataStatus: MyDataStatus.SENT,
+      myDataMark: 'EXISTING-MARK',
+    });
+    aadeTestProvider.transmitInvoice.mockResolvedValue({
+      status: 'sent',
+      environment: 'test',
+      endpoint: 'https://mydataapidev.aade.gr/SendInvoices',
+      mark: 'AADE-TEST-MARK-2',
+      uid: 'AADE-TEST-UID-2',
+    });
+
+    await service.sendTest(tenant, 'document-1', { force: true });
+
+    expect(aadeTestProvider.transmitInvoice).toHaveBeenCalledWith({
+      documentId: 'document-1',
+      payloadXml: expect.stringContaining('<InvoicesDoc'),
+      credentialEnvPrefix: 'AADE_MYDATA',
+      force: true,
+    });
+    expect(prisma.transmissionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentId: 'document-1',
+        provider: 'aade-mydata',
+        environment: 'test',
+        endpoint: 'https://mydataapidev.aade.gr/SendInvoices',
+        forcedRetry: true,
         status: TransmissionStatus.SENT,
       }),
     });

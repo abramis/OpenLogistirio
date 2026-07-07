@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -36,7 +36,7 @@ export class ImportsApiService {
   private readonly baseUrl = `${environment.apiBaseUrl}/imports`;
 
   history(): Observable<ImportBatch[]> {
-    return this.http.get<ImportBatch[]>(this.baseUrl, { headers: this.headers });
+    return this.http.get<ImportBatch[]>(this.baseUrl, {});
   }
 
   importDocumentsCsv(payload: {
@@ -45,12 +45,6 @@ export class ImportsApiService {
     fileName?: string;
     dryRun?: boolean;
   }): Observable<DocumentsCsvImportResponse> {
-    return this.http.post<DocumentsCsvImportResponse>(`${this.baseUrl}/documents-csv`, payload, {
-      headers: this.headers,
-    });
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({ 'x-office-id': 'office-athens-demo' });
+    return this.http.post<DocumentsCsvImportResponse>(`${this.baseUrl}/documents-csv`, payload, {});
   }
 }

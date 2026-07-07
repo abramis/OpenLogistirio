@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -103,58 +103,46 @@ export class CompaniesApiService {
   private readonly baseUrl = `${environment.apiBaseUrl}/companies`;
 
   findAll(): Observable<ClientCompany[]> {
-    return this.http.get<ClientCompany[]>(this.baseUrl, { headers: this.headers });
+    return this.http.get<ClientCompany[]>(this.baseUrl, {});
   }
 
   findOne(id: string): Observable<ClientCompany> {
-    return this.http.get<ClientCompany>(`${this.baseUrl}/${id}`, { headers: this.headers });
+    return this.http.get<ClientCompany>(`${this.baseUrl}/${id}`, {});
   }
 
   create(payload: CompanyPayload): Observable<ClientCompany> {
-    return this.http.post<ClientCompany>(this.baseUrl, payload, { headers: this.headers });
+    return this.http.post<ClientCompany>(this.baseUrl, payload, {});
   }
 
   lookupAadeRegistry(vatNumber: string): Observable<AadeRegistryCompanyLookup> {
     return this.http.post<AadeRegistryCompanyLookup>(
       `${this.baseUrl}/aade/lookup`,
       { vatNumber },
-      { headers: this.headers },
+      {},
     );
   }
 
   listSetupTemplates(id: string): Observable<ClientSetupTemplate[]> {
-    return this.http.get<ClientSetupTemplate[]>(`${this.baseUrl}/${id}/setup/templates`, {
-      headers: this.headers,
-    });
+    return this.http.get<ClientSetupTemplate[]>(`${this.baseUrl}/${id}/setup/templates`, {});
   }
 
   findSetupItems(id: string): Observable<ClientSetupItem[]> {
-    return this.http.get<ClientSetupItem[]>(`${this.baseUrl}/${id}/setup`, {
-      headers: this.headers,
-    });
+    return this.http.get<ClientSetupItem[]>(`${this.baseUrl}/${id}/setup`, {});
   }
 
   applySetupTemplate(id: string, templateId: string): Observable<ApplyClientSetupResult> {
     return this.http.post<ApplyClientSetupResult>(
       `${this.baseUrl}/${id}/setup/apply`,
       { templateId },
-      { headers: this.headers },
+      {},
     );
   }
 
   update(id: string, payload: CompanyPayload): Observable<ClientCompany> {
-    return this.http.patch<ClientCompany>(`${this.baseUrl}/${id}`, payload, {
-      headers: this.headers,
-    });
+    return this.http.patch<ClientCompany>(`${this.baseUrl}/${id}`, payload, {});
   }
 
   delete(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/${id}`, { headers: this.headers });
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({
-      'x-office-id': 'office-athens-demo',
-    });
+    return this.http.delete<void>(`${this.baseUrl}/${id}`, {});
   }
 }

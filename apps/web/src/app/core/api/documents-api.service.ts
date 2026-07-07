@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -28,6 +28,7 @@ export interface DocumentListItem {
     entityType?: string;
     myDataMode?: string;
     myDataAuthorized?: boolean;
+    myDataCredentialRef?: string | null;
   };
 }
 
@@ -59,12 +60,17 @@ export interface MyDataSendResponse {
   mark?: string;
   uid?: string;
   qrUrl?: string;
+  environment?: string;
 }
 
 export interface TransmissionAttempt {
   id: string;
   documentId: string;
   provider: string;
+  environment?: string | null;
+  endpoint?: string | null;
+  correlationId?: string | null;
+  forcedRetry?: boolean;
   status: string;
   requestPayload: string;
   responsePayload?: unknown;
@@ -96,34 +102,34 @@ export class DocumentsApiService {
       Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''),
     );
 
-    return this.http.get<DocumentListItem[]>(this.baseUrl, { headers: this.headers, params });
+    return this.http.get<DocumentListItem[]>(this.baseUrl, { params });
   }
 
   create(payload: DocumentPayload): Observable<DocumentListItem> {
-    return this.http.post<DocumentListItem>(this.baseUrl, payload, { headers: this.headers });
+    return this.http.post<DocumentListItem>(this.baseUrl, payload, {});
   }
 
   prepareMyData(documentId: string): Observable<MyDataPrepareResponse> {
     return this.http.post<MyDataPrepareResponse>(
       `${this.baseUrl}/${documentId}/mydata/prepare`,
       {},
-      { headers: this.headers },
+      {},
     );
   }
 
-  sendMockMyData(documentId: string): Observable<MyDataSendResponse> {
+  sendMockMyData(documentId: string, force = false): Observable<MyDataSendResponse> {
     return this.http.post<MyDataSendResponse>(
       `${this.baseUrl}/${documentId}/mydata/send-mock`,
+      { force },
       {},
-      { headers: this.headers },
     );
   }
 
-  sendTestMyData(documentId: string): Observable<MyDataSendResponse> {
+  sendTestMyData(documentId: string, force = false): Observable<MyDataSendResponse> {
     return this.http.post<MyDataSendResponse>(
       `${this.baseUrl}/${documentId}/mydata/send-test`,
+      { force },
       {},
-      { headers: this.headers },
     );
   }
 
@@ -131,7 +137,7 @@ export class DocumentsApiService {
     return this.http.post<MyDataPrepareResponse>(
       `${this.baseUrl}/${documentId}/mydata/prepare-expense`,
       {},
-      { headers: this.headers },
+      {},
     );
   }
 
@@ -139,19 +145,11 @@ export class DocumentsApiService {
     return this.http.post<MyDataSendResponse>(
       `${this.baseUrl}/${documentId}/mydata/send-expense-mock`,
       {},
-      { headers: this.headers },
+      {},
     );
   }
 
   getMyDataHistory(documentId: string): Observable<TransmissionAttempt[]> {
-    return this.http.get<TransmissionAttempt[]>(`${this.baseUrl}/${documentId}/mydata/history`, {
-      headers: this.headers,
-    });
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({
-      'x-office-id': 'office-athens-demo',
-    });
+    return this.http.get<TransmissionAttempt[]>(`${this.baseUrl}/${documentId}/mydata/history`, {});
   }
 }

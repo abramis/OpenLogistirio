@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
+import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { CreateObligationDto } from './dto/create-obligation.dto';
@@ -9,11 +11,6 @@ import { UpdateObligationDto } from './dto/update-obligation.dto';
 import { ObligationsService } from './obligations.service';
 
 @ApiTags('obligations')
-@ApiHeader({
-  name: 'x-office-id',
-  description: 'Temporary MVP tenant header. Later this comes from the JWT.',
-  required: true,
-})
 @Controller('obligations')
 export class ObligationsController {
   constructor(private readonly obligationsService: ObligationsService) {}
@@ -24,11 +21,13 @@ export class ObligationsController {
   }
 
   @Post()
+  @Roles(...OFFICE_WRITE_ROLES)
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateObligationDto) {
     return this.obligationsService.create(tenant, dto);
   }
 
   @Post('generate-monthly')
+  @Roles(...OFFICE_WRITE_ROLES)
   generateMonthly(
     @CurrentTenant() tenant: TenantContext,
     @Body() dto: GenerateMonthlyObligationsDto,
@@ -37,6 +36,7 @@ export class ObligationsController {
   }
 
   @Patch(':id')
+  @Roles(...OFFICE_WRITE_ROLES)
   update(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -46,6 +46,7 @@ export class ObligationsController {
   }
 
   @Post(':id/complete')
+  @Roles(...OFFICE_WRITE_ROLES)
   complete(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.obligationsService.complete(tenant, id);
   }

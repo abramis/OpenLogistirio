@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -63,25 +63,19 @@ export class ObligationsApiService {
       Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''),
     );
 
-    return this.http.get<OfficeObligation[]>(this.baseUrl, { headers: this.headers, params });
+    return this.http.get<OfficeObligation[]>(this.baseUrl, { params });
   }
 
   create(payload: ObligationPayload): Observable<OfficeObligation> {
-    return this.http.post<OfficeObligation>(this.baseUrl, payload, { headers: this.headers });
+    return this.http.post<OfficeObligation>(this.baseUrl, payload, {});
   }
 
   update(id: string, payload: Partial<ObligationPayload>): Observable<OfficeObligation> {
-    return this.http.patch<OfficeObligation>(`${this.baseUrl}/${id}`, payload, {
-      headers: this.headers,
-    });
+    return this.http.patch<OfficeObligation>(`${this.baseUrl}/${id}`, payload, {});
   }
 
   complete(id: string): Observable<OfficeObligation> {
-    return this.http.post<OfficeObligation>(
-      `${this.baseUrl}/${id}/complete`,
-      {},
-      { headers: this.headers },
-    );
+    return this.http.post<OfficeObligation>(`${this.baseUrl}/${id}/complete`, {}, {});
   }
 
   generateMonthly(
@@ -91,13 +85,7 @@ export class ObligationsApiService {
     return this.http.post<{ generated: number; obligations: OfficeObligation[] }>(
       `${this.baseUrl}/generate-monthly`,
       { year, month },
-      { headers: this.headers },
+      {},
     );
-  }
-
-  private get headers(): HttpHeaders {
-    return new HttpHeaders({
-      'x-office-id': 'office-athens-demo',
-    });
   }
 }

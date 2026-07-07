@@ -20,6 +20,7 @@ export const CLIENT_SETUP_KIND_LABELS: Record<string, string> = {
   ACCOUNT_TYPE: 'Είδη λογαριασμών',
   MOVEMENT_CODE: 'Κωδικοί κίνησης',
   JOURNAL: 'Ημερολόγια',
+  POSTING_RULE: 'Κανόνες λογιστικής άρθρωσης',
   VAT_SETUP: 'ΦΠΑ',
   FIXED_ASSET_CATEGORY: 'Κατηγορίες παγίων',
   DEPRECIATION_RULE: 'Κανόνες απόσβεσης',
@@ -72,6 +73,39 @@ const commonItems: ClientSetupTemplateItem[] = [
     kind: 'JOURNAL',
     code: 'CASH_BANK',
     name: 'Ημερολόγιο ταμείου και τραπεζών',
+  },
+  {
+    kind: 'POSTING_RULE',
+    code: 'SALE_INVOICE',
+    name: 'Άρθρωση τιμολογίου πώλησης',
+    metadata: {
+      movementCode: 'SALE_INVOICE',
+      counterpartyAccountCode: '30.00',
+      netAccountCode: '70.00',
+      vatAccountCode: '54.00',
+    },
+  },
+  {
+    kind: 'POSTING_RULE',
+    code: 'PURCHASE_INVOICE',
+    name: 'Άρθρωση τιμολογίου αγοράς/δαπάνης',
+    metadata: {
+      movementCode: 'PURCHASE_INVOICE',
+      counterpartyAccountCode: '50.00',
+      netAccountCode: '20.00',
+      vatAccountCode: '54.01',
+    },
+  },
+  {
+    kind: 'POSTING_RULE',
+    code: 'CREDIT_NOTE',
+    name: 'Άρθρωση πιστωτικού πώλησης',
+    metadata: {
+      movementCode: 'CREDIT_NOTE',
+      counterpartyAccountCode: '30.00',
+      netAccountCode: '70.00',
+      vatAccountCode: '54.00',
+    },
   },
   {
     kind: 'VAT_SETUP',

@@ -1,16 +1,13 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
+import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { ClientSetupService } from './client-setup.service';
 import { ApplyClientSetupTemplateDto } from './dto/apply-client-setup-template.dto';
 
 @ApiTags('client-setup')
-@ApiHeader({
-  name: 'x-office-id',
-  description: 'Temporary MVP tenant header. Later this comes from the JWT.',
-  required: true,
-})
 @Controller('companies/:clientCompanyId/setup')
 export class ClientSetupController {
   constructor(private readonly clientSetupService: ClientSetupService) {}
@@ -29,6 +26,7 @@ export class ClientSetupController {
   }
 
   @Post('apply')
+  @Roles(...OFFICE_WRITE_ROLES)
   applyTemplate(
     @CurrentTenant() tenant: TenantContext,
     @Param('clientCompanyId') clientCompanyId: string,
