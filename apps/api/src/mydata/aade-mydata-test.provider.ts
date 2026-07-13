@@ -2,12 +2,15 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { XMLParser } from 'fast-xml-parser';
 import {
+  MyDataCancelInvoiceRequest,
+  MyDataExpenseClassificationRequest,
   MyDataProvider,
   MyDataRequestDocsRequest,
   MyDataRequestDocsResponse,
   MyDataTransmissionRequest,
   MyDataTransmissionResponse,
 } from './mydata-provider.interface';
+import { MyDataXmlValidationService } from './mydata-xml-validation.service';
 
 @Injectable()
 export class AadeMyDataTestProvider implements MyDataProvider {
@@ -17,34 +20,57 @@ export class AadeMyDataTestProvider implements MyDataProvider {
     removeNSPrefix: true,
   });
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly xmlValidationService: MyDataXmlValidationService,
+  ) {}
 
   // Official AADE myDATA ERP REST API technical description checked: v2.0.2,
   // June 2026, test SendInvoices URL. Before enabling production, re-check the
   // latest official AADE specs, XSDs, authentication and test environment.
   // Never hardcode real AADE credentials and never store TAXISnet passwords.
   async transmitInvoice(request: MyDataTransmissionRequest): Promise<MyDataTransmissionResponse> {
+    this.xmlValidationService.validateInvoices(request.payloadXml);
+    return this.postXml(request, 'AADE_MYDATA_TEST_SEND_INVOICES_URL', {
+      productionUrlEnvName: 'AADE_MYDATA_PRODUCTION_SEND_INVOICES_URL',
+      rejectedMessage: 'AADE myDATA test environment rejected the document.',
+    });
+  }
+
+  async transmitExpenseClassification(
+    request: MyDataExpenseClassificationRequest,
+  ): Promise<MyDataTransmissionResponse> {
+    this.xmlValidationService.validateExpenseClassifications(request.payloadXml);
+    return this.postXml(request, 'AADE_MYDATA_TEST_SEND_EXPENSES_CLASSIFICATION_URL', {
+      productionUrlEnvName: 'AADE_MYDATA_PRODUCTION_SEND_EXPENSES_CLASSIFICATION_URL',
+      rejectedMessage: 'AADE myDATA rejected the expense classification.',
+      searchParams: request.postPerInvoice ? { postPerInvoice: 'true' } : undefined,
+    });
+  }
+
+  async cancelInvoice(request: MyDataCancelInvoiceRequest): Promise<MyDataTransmissionResponse> {
     const config = this.resolveConfig(
       request.credentialEnvPrefix,
-      'AADE_MYDATA_TEST_SEND_INVOICES_URL',
-      'AADE_MYDATA_PRODUCTION_SEND_INVOICES_URL',
+      'AADE_MYDATA_TEST_CANCEL_INVOICE_URL',
+      'AADE_MYDATA_PRODUCTION_CANCEL_INVOICE_URL',
     );
     const timeoutMs = this.configService.get<number>('AADE_MYDATA_TIMEOUT_MS', 15000);
+    const url = new URL(config.endpoint);
+    url.searchParams.set('mark', request.mark);
+    appendOptionalSearchParam(url, 'entityVatNumber', request.entityVatNumber);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
 
     try {
-      response = await fetch(config.endpoint, {
+      response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/xml; charset=utf-8',
           Accept: 'application/xml',
           'aade-user-id': config.userId,
           'ocp-apim-subscription-key': config.subscriptionKey,
         },
-        body: request.payloadXml,
         signal: controller.signal,
       });
     } catch (error) {
@@ -52,7 +78,7 @@ export class AadeMyDataTestProvider implements MyDataProvider {
         return {
           status: 'failed',
           environment: config.environment,
-          endpoint: config.endpoint,
+          endpoint: url.toString(),
           errorCode: 'AADE_TIMEOUT',
           errorMessage: `AADE myDATA request timed out after ${timeoutMs}ms.`,
         };
@@ -70,7 +96,7 @@ export class AadeMyDataTestProvider implements MyDataProvider {
       return {
         status: 'failed',
         environment: config.environment,
-        endpoint: config.endpoint,
+        endpoint: url.toString(),
         httpStatus: response.status,
         rawResponse: parsedResponse,
         errorCode: `HTTP_${response.status}`,
@@ -85,9 +111,105 @@ export class AadeMyDataTestProvider implements MyDataProvider {
       return {
         status: 'sent',
         environment: config.environment,
-        endpoint: config.endpoint,
+        endpoint: url.toString(),
+        httpStatus: response.status,
+        mark: request.mark,
+        cancellationMark: findFirstValue(parsedResponse, ['cancellationMark', 'mark']),
+        rawResponse: parsedResponse,
+      };
+    }
+
+    return {
+      status: 'failed',
+      environment: config.environment,
+      endpoint: url.toString(),
+      httpStatus: response.status,
+      rawResponse: parsedResponse,
+      errorCode: findFirstValue(parsedResponse, ['code', 'errorCode']),
+      errorMessage:
+        findFirstValue(parsedResponse, ['message', 'errorMessage']) ??
+        'AADE myDATA rejected the cancellation.',
+    };
+  }
+
+  private async postXml(
+    request: MyDataTransmissionRequest,
+    testUrlEnvName: string,
+    options: {
+      productionUrlEnvName: string;
+      rejectedMessage: string;
+      searchParams?: Record<string, string>;
+    },
+  ): Promise<MyDataTransmissionResponse> {
+    const config = this.resolveConfig(
+      request.credentialEnvPrefix,
+      testUrlEnvName,
+      options.productionUrlEnvName,
+    );
+    const timeoutMs = this.configService.get<number>('AADE_MYDATA_TIMEOUT_MS', 15000);
+    const url = new URL(config.endpoint);
+    for (const [key, value] of Object.entries(options.searchParams ?? {})) {
+      url.searchParams.set(key, value);
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          Accept: 'application/xml',
+          'aade-user-id': config.userId,
+          'ocp-apim-subscription-key': config.subscriptionKey,
+        },
+        body: request.payloadXml,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          status: 'failed',
+          environment: config.environment,
+          endpoint: url.toString(),
+          errorCode: 'AADE_TIMEOUT',
+          errorMessage: `AADE myDATA request timed out after ${timeoutMs}ms.`,
+        };
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const responseText = await response.text();
+    const parsedResponse = this.parseXmlResponse(responseText);
+
+    if (!response.ok) {
+      return {
+        status: 'failed',
+        environment: config.environment,
+        endpoint: url.toString(),
+        httpStatus: response.status,
+        rawResponse: parsedResponse,
+        errorCode: `HTTP_${response.status}`,
+        errorMessage: responseText || response.statusText,
+      };
+    }
+
+    const statusCode = findFirstValue(parsedResponse, ['statusCode', 'status']);
+    const errors = findFirstValue(parsedResponse, ['errors', 'error']);
+
+    if (String(statusCode).toLowerCase() === 'success' && !errors) {
+      return {
+        status: 'sent',
+        environment: config.environment,
+        endpoint: url.toString(),
         httpStatus: response.status,
         mark: findFirstValue(parsedResponse, ['invoiceMark', 'mark']),
+        classificationMark: findFirstValue(parsedResponse, ['classificationMark']),
         uid: findFirstValue(parsedResponse, ['invoiceUid', 'uid']),
         qrUrl: findFirstValue(parsedResponse, ['qrUrl', 'qrCodeUrl']),
         rawResponse: parsedResponse,
@@ -97,13 +219,12 @@ export class AadeMyDataTestProvider implements MyDataProvider {
     return {
       status: 'failed',
       environment: config.environment,
-      endpoint: config.endpoint,
+      endpoint: url.toString(),
       httpStatus: response.status,
       rawResponse: parsedResponse,
       errorCode: findFirstValue(parsedResponse, ['code', 'errorCode']),
       errorMessage:
-        findFirstValue(parsedResponse, ['message', 'errorMessage']) ??
-        'AADE myDATA test environment rejected the document.',
+        findFirstValue(parsedResponse, ['message', 'errorMessage']) ?? options.rejectedMessage,
     };
   }
 

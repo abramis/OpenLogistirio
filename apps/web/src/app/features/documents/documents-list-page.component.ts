@@ -198,13 +198,19 @@ import {
                   >{{ statusLabel(document.myDataStatus) }}</span
                 >
                 <small *ngIf="document.myDataMark">MARK: {{ document.myDataMark }}</small>
+                <small *ngIf="document.myDataClassificationMark">
+                  Classification: {{ document.myDataClassificationMark }}
+                </small>
+                <small *ngIf="document.myDataCancellationMark">
+                  Cancellation: {{ document.myDataCancellationMark }}
+                </small>
               </td>
               <td class="doc-actions">
                 <button
                   type="button"
                   class="btn btn-xs btn-secondary"
                   title="Prepare myDATA XML"
-                  [disabled]="!supportsSendInvoices(document)"
+                  [disabled]="!canPrepareIssued(document)"
                   (click)="prepare(document)"
                 >
                   <span class="material-symbols-outlined">code</span> XML
@@ -213,7 +219,7 @@ import {
                   type="button"
                   class="btn btn-xs btn-secondary"
                   title="Mock send"
-                  [disabled]="!supportsSendInvoices(document)"
+                  [disabled]="!canPrepareIssued(document)"
                   (click)="sendMock(document)"
                 >
                   <span class="material-symbols-outlined">send</span> Mock
@@ -222,7 +228,7 @@ import {
                   type="button"
                   class="btn btn-xs btn-secondary"
                   title="Expense classification preview"
-                  [disabled]="!supportsExpenseReceiver(document)"
+                  [disabled]="!canPrepareExpense(document)"
                   (click)="prepareExpense(document)"
                 >
                   <span class="material-symbols-outlined">fact_check</span> Expense XML
@@ -231,10 +237,28 @@ import {
                   type="button"
                   class="btn btn-xs btn-secondary"
                   title="Mock expense classification"
-                  [disabled]="!supportsExpenseReceiver(document)"
+                  [disabled]="!canPrepareExpense(document)"
                   (click)="sendExpenseMock(document)"
                 >
                   <span class="material-symbols-outlined">done_all</span> Expense mock
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-danger"
+                  title="AADE test expense classification"
+                  [disabled]="!canSendExpenseAadeTest(document)"
+                  (click)="sendExpenseTest(document)"
+                >
+                  <span class="material-symbols-outlined">cloud_done</span> Expense AADE
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-danger"
+                  title="Retry failed AADE expense classification"
+                  [disabled]="!canForceExpenseAadeRetry(document)"
+                  (click)="forceSendExpenseTest(document)"
+                >
+                  <span class="material-symbols-outlined">sync_problem</span> Expense retry
                 </button>
                 <button
                   type="button"
@@ -253,6 +277,15 @@ import {
                   (click)="forceSendTest(document)"
                 >
                   <span class="material-symbols-outlined">sync_problem</span> Retry
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-danger"
+                  title="AADE test cancellation"
+                  [disabled]="!canCancelAadeTest(document)"
+                  (click)="cancelTest(document)"
+                >
+                  <span class="material-symbols-outlined">cancel</span> Cancel
                 </button>
                 <button
                   type="button"
@@ -315,9 +348,8 @@ import {
             >{{ attempt.status }}</span
           >
           <span class="history-meta"
-            >{{ attempt.provider }}<ng-container *ngIf="attempt.environment">
-              / {{ attempt.environment }}</ng-container
-            >
+            >{{ attempt.provider
+            }}<ng-container *ngIf="attempt.environment"> / {{ attempt.environment }}</ng-container>
             - {{ attempt.createdAt | date: 'dd/MM/yy HH:mm' }}</span
           >
           <small *ngIf="attempt.forcedRetry">forced retry</small>
@@ -602,6 +634,32 @@ export class DocumentsListPageComponent {
     });
   }
 
+  forceSendExpenseTest(document: DocumentListItem): void {
+    this.clearMessages();
+    this.documentsApi.sendExpenseTestMyData(document.id, true).subscribe({
+      next: (response) => {
+        this.message = `AADE expense retry succeeded (${response.environment || 'configured'}). Classification MARK: ${
+          response.classificationMark || '-'
+        }`;
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  cancelTest(document: DocumentListItem): void {
+    this.clearMessages();
+    this.documentsApi.cancelTestMyData(document.id).subscribe({
+      next: (response) => {
+        this.message = `AADE cancellation succeeded (${response.environment || 'configured'}). Cancellation MARK: ${
+          response.cancellationMark || '-'
+        }`;
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
   prepareExpense(document: DocumentListItem): void {
     this.clearMessages();
     this.documentsApi.prepareExpenseMyData(document.id).subscribe({
@@ -625,6 +683,19 @@ export class DocumentsListPageComponent {
     });
   }
 
+  sendExpenseTest(document: DocumentListItem): void {
+    this.clearMessages();
+    this.documentsApi.sendExpenseTestMyData(document.id).subscribe({
+      next: (response) => {
+        this.message = `AADE expense classification succeeded (${response.environment || 'configured'}). MARK: ${
+          response.mark || '-'
+        }${response.classificationMark ? ` / classification ${response.classificationMark}` : ''}`;
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
   loadHistory(document: DocumentListItem): void {
     this.clearMessages();
     this.documentsApi.getMyDataHistory(document.id).subscribe({
@@ -639,8 +710,22 @@ export class DocumentsListPageComponent {
     return ['SALES_INVOICE', 'CREDIT_NOTE', 'RETAIL_RECEIPT'].includes(document.documentType);
   }
 
+  canPrepareIssued(document: DocumentListItem): boolean {
+    return (
+      this.supportsSendInvoices(document) && !['SENT', 'CANCELLED'].includes(document.myDataStatus)
+    );
+  }
+
   supportsExpenseReceiver(document: DocumentListItem): boolean {
     return document.documentType === 'PURCHASE_INVOICE';
+  }
+
+  canPrepareExpense(document: DocumentListItem): boolean {
+    return (
+      this.supportsExpenseReceiver(document) &&
+      !['SENT', 'CANCELLED'].includes(document.myDataStatus) &&
+      Boolean(document.myDataMark)
+    );
   }
 
   canSendAadeTest(document: DocumentListItem): boolean {
@@ -648,7 +733,7 @@ export class DocumentsListPageComponent {
       return false;
     }
 
-    if (document.myDataStatus === 'SENT') {
+    if (['SENT', 'FAILED', 'CANCELLED'].includes(document.myDataStatus)) {
       return false;
     }
 
@@ -661,7 +746,38 @@ export class DocumentsListPageComponent {
   }
 
   canForceAadeRetry(document: DocumentListItem): boolean {
-    return document.myDataStatus === 'SENT' && this.canUseAadeApi(document);
+    return (
+      this.supportsSendInvoices(document) &&
+      document.myDataStatus === 'FAILED' &&
+      this.canUseAadeApi(document)
+    );
+  }
+
+  canCancelAadeTest(document: DocumentListItem): boolean {
+    return (
+      this.supportsSendInvoices(document) &&
+      document.myDataStatus === 'SENT' &&
+      Boolean(document.myDataMark) &&
+      this.canUseAadeApi(document)
+    );
+  }
+
+  canSendExpenseAadeTest(document: DocumentListItem): boolean {
+    return (
+      this.supportsExpenseReceiver(document) &&
+      !['SENT', 'FAILED', 'CANCELLED'].includes(document.myDataStatus) &&
+      Boolean(document.myDataMark) &&
+      this.canUseAadeApi(document)
+    );
+  }
+
+  canForceExpenseAadeRetry(document: DocumentListItem): boolean {
+    return (
+      this.supportsExpenseReceiver(document) &&
+      document.myDataStatus === 'FAILED' &&
+      Boolean(document.myDataMark) &&
+      this.canUseAadeApi(document)
+    );
   }
 
   companyMyDataLabel(document: DocumentListItem): string {
@@ -684,11 +800,10 @@ export class DocumentsListPageComponent {
 
   private canUseAadeApi(document: DocumentListItem): boolean {
     return (
-      this.supportsSendInvoices(document) &&
-      ((document.clientCompany.myDataMode === 'ACCOUNTING_OFFICE_AUTHORIZED' &&
+      (document.clientCompany.myDataMode === 'ACCOUNTING_OFFICE_AUTHORIZED' &&
         document.clientCompany.myDataAuthorized === true) ||
-        (document.clientCompany.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF' &&
-          Boolean(document.clientCompany.myDataCredentialRef)))
+      (document.clientCompany.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF' &&
+        Boolean(document.clientCompany.myDataCredentialRef))
     );
   }
 

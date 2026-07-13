@@ -19,6 +19,7 @@ import { MyDataModule } from './mydata/mydata.module';
 import { ObligationsModule } from './obligations/obligations.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
+import { PeriodClosesModule } from './period-closes/period-closes.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { UsersModule } from './users/users.module';
     DeclarationsModule,
     ReportsModule,
     UsersModule,
+    PeriodClosesModule,
   ],
 })
 export class AppModule {}

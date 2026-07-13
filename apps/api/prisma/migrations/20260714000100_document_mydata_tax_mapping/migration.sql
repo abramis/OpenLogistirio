@@ -1,0 +1,13 @@
+ALTER TABLE `Document`
+  ADD COLUMN `paymentMethodType` INTEGER NOT NULL DEFAULT 3,
+  ADD COLUMN `vatExemptionCategory` INTEGER NULL,
+  ADD COLUMN `correlatedInvoiceMark` VARCHAR(40) NULL,
+  ADD COLUMN `withheldAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN `withheldCategory` INTEGER NULL,
+  ADD COLUMN `feesAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN `feesCategory` INTEGER NULL,
+  ADD COLUMN `stampDutyAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN `stampDutyCategory` INTEGER NULL,
+  ADD COLUMN `otherTaxesAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN `otherTaxesCategory` INTEGER NULL,
+  ADD COLUMN `deductionsAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0;

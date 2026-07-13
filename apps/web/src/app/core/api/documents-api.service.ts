@@ -17,10 +17,26 @@ export interface DocumentListItem {
   vatAmount: string | number;
   totalAmount: string | number;
   vatCategory: string;
+  paymentMethodType?: number;
+  vatExemptionCategory?: number | null;
+  correlatedInvoiceMark?: string | null;
+  withheldAmount?: string | number;
+  withheldCategory?: number | null;
+  feesAmount?: string | number;
+  feesCategory?: number | null;
+  stampDutyAmount?: string | number;
+  stampDutyCategory?: number | null;
+  otherTaxesAmount?: string | number;
+  otherTaxesCategory?: number | null;
+  deductionsAmount?: string | number;
   myDataStatus: string;
   myDataMark?: string | null;
   myDataUid?: string | null;
   myDataQrUrl?: string | null;
+  myDataClassificationMark?: string | null;
+  myDataCancellationMark?: string | null;
+  myDataCancelledAt?: string | null;
+  classificationStatus?: string | null;
   clientCompany: {
     id: string;
     legalName: string;
@@ -52,12 +68,26 @@ export interface DocumentPayload {
   vatAmount: number;
   totalAmount: number;
   vatCategory: string;
+  paymentMethodType?: number;
+  vatExemptionCategory?: number;
+  correlatedInvoiceMark?: string;
+  withheldAmount?: number;
+  withheldCategory?: number;
+  feesAmount?: number;
+  feesCategory?: number;
+  stampDutyAmount?: number;
+  stampDutyCategory?: number;
+  otherTaxesAmount?: number;
+  otherTaxesCategory?: number;
+  deductionsAmount?: number;
 }
 
 export interface MyDataSendResponse {
   documentId: string;
   status: string;
   mark?: string;
+  classificationMark?: string;
+  cancellationMark?: string;
   uid?: string;
   qrUrl?: string;
   environment?: string;
@@ -133,6 +163,14 @@ export class DocumentsApiService {
     );
   }
 
+  cancelTestMyData(documentId: string): Observable<MyDataSendResponse> {
+    return this.http.post<MyDataSendResponse>(
+      `${this.baseUrl}/${documentId}/mydata/cancel-test`,
+      {},
+      {},
+    );
+  }
+
   prepareExpenseMyData(documentId: string): Observable<MyDataPrepareResponse> {
     return this.http.post<MyDataPrepareResponse>(
       `${this.baseUrl}/${documentId}/mydata/prepare-expense`,
@@ -145,6 +183,14 @@ export class DocumentsApiService {
     return this.http.post<MyDataSendResponse>(
       `${this.baseUrl}/${documentId}/mydata/send-expense-mock`,
       {},
+      {},
+    );
+  }
+
+  sendExpenseTestMyData(documentId: string, force = false): Observable<MyDataSendResponse> {
+    return this.http.post<MyDataSendResponse>(
+      `${this.baseUrl}/${documentId}/mydata/send-expense-test`,
+      { force },
       {},
     );
   }

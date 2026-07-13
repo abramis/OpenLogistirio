@@ -22,6 +22,14 @@ const environmentSchema = z.object({
     .string()
     .url()
     .default('https://mydataapidev.aade.gr/SendInvoices'),
+  AADE_MYDATA_TEST_SEND_EXPENSES_CLASSIFICATION_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/SendExpensesClassification'),
+  AADE_MYDATA_TEST_CANCEL_INVOICE_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/CancelInvoice'),
   AADE_MYDATA_TEST_REQUEST_DOCS_URL: z
     .string()
     .url()
@@ -34,6 +42,14 @@ const environmentSchema = z.object({
     .string()
     .url()
     .default('https://mydatapi.aade.gr/myDATA/SendInvoices'),
+  AADE_MYDATA_PRODUCTION_SEND_EXPENSES_CLASSIFICATION_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/SendExpensesClassification'),
+  AADE_MYDATA_PRODUCTION_CANCEL_INVOICE_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/CancelInvoice'),
   AADE_MYDATA_PRODUCTION_REQUEST_DOCS_URL: z
     .string()
     .url()

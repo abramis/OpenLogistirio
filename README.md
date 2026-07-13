@@ -54,9 +54,13 @@ AADE_MYDATA_USER_ID=your-mydata-api-username
 AADE_MYDATA_SUBSCRIPTION_KEY=your-mydata-api-subscription-key
 AADE_MYDATA_TIMEOUT_MS=15000
 AADE_MYDATA_TEST_SEND_INVOICES_URL=https://mydataapidev.aade.gr/SendInvoices
+AADE_MYDATA_TEST_SEND_EXPENSES_CLASSIFICATION_URL=https://mydataapidev.aade.gr/SendExpensesClassification
+AADE_MYDATA_TEST_CANCEL_INVOICE_URL=https://mydataapidev.aade.gr/CancelInvoice
 AADE_MYDATA_TEST_REQUEST_DOCS_URL=https://mydataapidev.aade.gr/RequestDocs
 AADE_MYDATA_TEST_REQUEST_TRANSMITTED_DOCS_URL=https://mydataapidev.aade.gr/RequestTransmittedDocs
 AADE_MYDATA_PRODUCTION_SEND_INVOICES_URL=https://mydatapi.aade.gr/myDATA/SendInvoices
+AADE_MYDATA_PRODUCTION_SEND_EXPENSES_CLASSIFICATION_URL=https://mydatapi.aade.gr/myDATA/SendExpensesClassification
+AADE_MYDATA_PRODUCTION_CANCEL_INVOICE_URL=https://mydatapi.aade.gr/myDATA/CancelInvoice
 AADE_MYDATA_PRODUCTION_REQUEST_DOCS_URL=https://mydatapi.aade.gr/myDATA/RequestDocs
 AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL=https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs
 ```
@@ -268,9 +272,13 @@ AADE_MYDATA_USER_ID=your-mydata-api-username
 AADE_MYDATA_SUBSCRIPTION_KEY=your-mydata-api-subscription-key
 AADE_MYDATA_TIMEOUT_MS=15000
 AADE_MYDATA_TEST_SEND_INVOICES_URL=https://mydataapidev.aade.gr/SendInvoices
+AADE_MYDATA_TEST_SEND_EXPENSES_CLASSIFICATION_URL=https://mydataapidev.aade.gr/SendExpensesClassification
+AADE_MYDATA_TEST_CANCEL_INVOICE_URL=https://mydataapidev.aade.gr/CancelInvoice
 AADE_MYDATA_TEST_REQUEST_DOCS_URL=https://mydataapidev.aade.gr/RequestDocs
 AADE_MYDATA_TEST_REQUEST_TRANSMITTED_DOCS_URL=https://mydataapidev.aade.gr/RequestTransmittedDocs
 AADE_MYDATA_PRODUCTION_SEND_INVOICES_URL=https://mydatapi.aade.gr/myDATA/SendInvoices
+AADE_MYDATA_PRODUCTION_SEND_EXPENSES_CLASSIFICATION_URL=https://mydatapi.aade.gr/myDATA/SendExpensesClassification
+AADE_MYDATA_PRODUCTION_CANCEL_INVOICE_URL=https://mydatapi.aade.gr/myDATA/CancelInvoice
 AADE_MYDATA_PRODUCTION_REQUEST_DOCS_URL=https://mydatapi.aade.gr/myDATA/RequestDocs
 AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL=https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs
 ```
@@ -292,8 +300,19 @@ AADE_MYDATA_CLIENT_111222333_SUBSCRIPTION_KEY=client-mydata-subscription-key
 
 Ελεύθεροι επαγγελματίες and ατομικές επιχειρήσεις are handled as client profiles
 with their own ΑΦΜ, ΚΑΔ, profession label, VAT regime, books category, and myDATA
-setup. The current AADE test send path still covers issued sales documents only;
-expenses/receiver flows and classifications need their own implementation slices.
+setup. The AADE test send path covers issued sales documents and expense/receiver
+classification for purchase invoices that have first been matched to an AADE MARK
+through RequestDocs reconciliation. Expense classifications use the upgraded
+`postPerInvoice=true` flow with separate E3 and VAT classification records.
+Issued sales documents that have already been sent with a MARK can also be cancelled
+through the guarded AADE test `CancelInvoice` flow.
+
+Document creation also captures the AADE payment method, VAT-exemption reason,
+withholding, fees, digital transaction duty, other taxes and deductions. The XML
+mapper emits invoice-level `taxesTotals` and matching summary totals. Credit notes
+with an original invoice MARK are sent as correlated type `5.1`; without a MARK they
+are sent as uncorrelated type `5.2`. The API validates category/amount pairs and the
+payable total before XML preparation.
 
 Production AADE sends are deliberately double-gated:
 
@@ -302,21 +321,34 @@ Production AADE sends are deliberately double-gated:
 - Re-check the latest official AADE technical specs/XSDs and endpoint URLs
 - Confirm the accountant/client authorization and credentials outside the browser
 
-The backend records the provider environment, endpoint, correlation id, failure
-payload, and whether an attempt was a forced retry. Already-sent documents cannot
-be prepared or sent again unless the API call explicitly passes `force: true`,
-so accidental duplicate transmissions are blocked by default.
+Before `SendInvoices` or `SendExpensesClassification`, the backend validates the XML
+against the bundled official AADE myDATA v2.0.1 XSDs. Invalid XML is rejected locally
+and is never sent to AADE. The backend records the provider environment, endpoint,
+correlation id, failure payload, and whether an attempt was a forced retry. Explicit
+retry is allowed only after a `FAILED` attempt. A `SENT` document is never submitted
+again; corrections must use cancellation or a corrective/credit document.
 
 The client details page also includes a myDATA reconciliation panel. It calls the
 AADE `RequestDocs` or `RequestTransmittedDocs` endpoint, stores the returned
-AADE snapshot without changing internal accounting documents, and reconciles it
-against local documents by MARK/UID or by document number, date, VAT number and
-amounts. The result highlights matched documents, missing ERP documents, and
-amount/date/type/counterparty mismatches for accountant review.
+AADE snapshot, reconciles it against local documents by MARK/UID or by document
+number, date, VAT number and amounts, and writes the matched AADE MARK/UID back
+to the local document so follow-up flows such as expense classification can use
+the official correlation. Returned expense-classification and cancellation MARKs
+are also correlated back to the original local document, together with the
+cancellation date. The result highlights matched documents, missing ERP documents,
+and amount/date/type/counterparty mismatches for accountant review.
 
-The official AADE ERP REST API technical description checked for this implementation is
-myDATA ERP API v2.0.2, June 2026. Re-check the latest official AADE specs, XSDs,
-authentication rules, and test-environment URLs before enabling production sends.
+The declarations page includes monthly and quarterly period-close reviews. Each review
+captures automatic checks for unposted documents, journal balance, unresolved/failed
+myDATA records, reconciliation mismatches, VAT workpaper availability and ERP-vs-AADE
+VAT differences, plus a manual supporting-documents confirmation. A completed review
+is submitted for an accountant/admin approval with preparer, approver and timestamps.
+Accounting periods cannot be locked, and declaration workpapers cannot be approved,
+until a covering period-close review has been approved.
+
+The bundled validation schemas and implemented flows were checked against the official
+myDATA ERP API/XSD v2.0.1 release (March 2026). Re-check the latest official AADE specs,
+XSDs, authentication rules, and test-environment URLs before enabling production.
 
 Useful official AADE pages:
 
@@ -375,13 +407,25 @@ Implemented accounting-office workflows in the MVP:
 - myDATA XML preparation, mock send and guarded AADE send for issued sales documents
 - myDATA transmission attempt history with environment, endpoint, correlation id,
   failure payload, and forced-retry markers
+- Guarded AADE test cancellation for already-sent issued sales documents, with
+  original/cancellation MARK correlation and cancellation timestamp
 - AADE RequestDocs/RequestTransmittedDocs snapshot sync and reconciliation against
   local ERP documents
-- Expense/receiver myDATA preparation and mock classification for purchase invoices
+- Expense/receiver myDATA preparation, mock classification, and guarded AADE test
+  `SendExpensesClassification?postPerInvoice=true` for purchases with an AADE MARK
+- Official AADE v2.0.1 XSD preflight validation for invoice and expense XML
+- AADE payment methods, VAT-exemption reasons, invoice-level withholding/fees/digital
+  transaction duty/other taxes/deductions, and correlated `5.1` vs uncorrelated `5.2`
+  credit-note mapping
+- Failed-only explicit resend policy; sent/cancelled documents cannot be duplicated
 - Per-client AADE authorization/credential routing
 - Counterparty master data for customers and suppliers per client
 - CSV document import with preview, validation and import history
 - VAT declaration workpapers generated from documents
+- VAT workpaper reconciliation of ERP sales/purchases and VAT against deduplicated
+  myDATA snapshots, including amount deltas and mismatch counts
+- Monthly/quarterly close checklist with preparer/accountant approval workflow;
+  approved close review is required before period locking and workpaper approval
 - Office reports for summary and VAT review
 - Office obligations queue with monthly generator for myDATA review and VAT obligations
 - Fixed asset register with prorated annual depreciation calculation

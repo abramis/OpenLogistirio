@@ -5,6 +5,10 @@ export interface MyDataTransmissionRequest {
   force?: boolean;
 }
 
+export interface MyDataExpenseClassificationRequest extends MyDataTransmissionRequest {
+  postPerInvoice: boolean;
+}
+
 export interface MyDataRequestDocsRequest {
   source: 'REQUEST_DOCS' | 'REQUEST_TRANSMITTED_DOCS';
   mark: string;
@@ -19,12 +23,21 @@ export interface MyDataRequestDocsRequest {
   credentialEnvPrefix?: string;
 }
 
+export interface MyDataCancelInvoiceRequest {
+  documentId: string;
+  mark: string;
+  entityVatNumber?: string;
+  credentialEnvPrefix?: string;
+}
+
 export interface MyDataTransmissionResponse {
   status: 'sent' | 'failed';
   environment?: string;
   endpoint?: string;
   httpStatus?: number;
   mark?: string;
+  classificationMark?: string;
+  cancellationMark?: string;
   uid?: string;
   qrUrl?: string;
   rawResponse?: unknown;
@@ -46,6 +59,12 @@ export interface MyDataProvider {
   readonly providerName: string;
 
   transmitInvoice(request: MyDataTransmissionRequest): Promise<MyDataTransmissionResponse>;
+
+  transmitExpenseClassification?(
+    request: MyDataExpenseClassificationRequest,
+  ): Promise<MyDataTransmissionResponse>;
+
+  cancelInvoice?(request: MyDataCancelInvoiceRequest): Promise<MyDataTransmissionResponse>;
 
   requestDocs?(request: MyDataRequestDocsRequest): Promise<MyDataRequestDocsResponse>;
 }

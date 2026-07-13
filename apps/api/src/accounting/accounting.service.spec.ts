@@ -207,6 +207,29 @@ describe('AccountingService', () => {
     });
   });
 
+  it('requires an approved close review before locking a period', async () => {
+    const prisma = {
+      accountingPeriod: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'period-1',
+          accountingOfficeId: 'office-1',
+          clientCompanyId: 'company-1',
+          fiscalYear: 2026,
+          periodMonth: 7,
+          status: AccountingPeriodStatus.CLOSED,
+        }),
+        update: jest.fn(),
+      },
+      periodCloseReview: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new AccountingService(prisma as unknown as PrismaService);
+
+    await expect(service.lockPeriod(tenant, 'period-1')).rejects.toThrow(
+      'Approve the monthly or quarterly close review',
+    );
+    expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+  });
+
   it('builds income statement and balance sheet totals from posted lines', async () => {
     const prisma = {
       clientCompany: {

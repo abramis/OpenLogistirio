@@ -124,8 +124,21 @@ enum DeclarationWorkpaperType {
 enum DeclarationWorkpaperStatus {
   DRAFT
   READY
+  APPROVED
   SUBMITTED
   ARCHIVED
+}
+
+enum PeriodCloseKind {
+  MONTHLY
+  QUARTERLY
+}
+
+enum PeriodCloseReviewStatus {
+  DRAFT
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
 }
 
 enum ChartAccountType {
@@ -207,6 +220,7 @@ model AccountingOffice {
   auditLogs             AuditLog[]
   myDataSyncRuns        MyDataSyncRun[]
   myDataSnapshots       MyDataSnapshot[]
+  periodCloseReviews    PeriodCloseReview[]
 }
 
 model User {
@@ -223,11 +237,14 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  accountingOffice    AccountingOffice     @relation(fields: [accountingOfficeId], references: [id])
-  auditLogs           AuditLog[]
-  assignedObligations OfficeObligation[]   @relation("AssignedObligations")
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
+  accountingOffice              AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  auditLogs                     AuditLog[]
+  assignedObligations           OfficeObligation[]     @relation("AssignedObligations")
+  refreshTokens                 RefreshToken[]
+  passwordResetTokens           PasswordResetToken[]
+  preparedPeriodCloseReviews    PeriodCloseReview[]    @relation("PeriodClosePreparedBy")
+  approvedPeriodCloseReviews    PeriodCloseReview[]    @relation("PeriodCloseApprovedBy")
+  approvedDeclarationWorkpapers DeclarationWorkpaper[] @relation("DeclarationWorkpaperApprovedBy")
 
   @@index([accountingOfficeId])
   @@index([disabledAt])
@@ -300,6 +317,7 @@ model ClientCompany {
   journalEntries        JournalEntry[]
   myDataSyncRuns        MyDataSyncRun[]
   myDataSnapshots       MyDataSnapshot[]
+  periodCloseReviews    PeriodCloseReview[]
 
   @@unique([accountingOfficeId, vatNumber])
   @@index([accountingOfficeId, deletedAt])
@@ -519,15 +537,53 @@ model DeclarationWorkpaper {
   notes              String?
   generatedAt        DateTime                   @default(now())
   submittedAt        DateTime?
+  approvedById       String?
+  approvedAt         DateTime?
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
 
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  approvedBy       User?            @relation("DeclarationWorkpaperApprovedBy", fields: [approvedById], references: [id])
 
   @@unique([clientCompanyId, type, periodYear, periodMonth], map: "DeclWorkpaper_period_key")
   @@index([accountingOfficeId, type, status], map: "DeclWorkpaper_office_type_status_idx")
   @@index([clientCompanyId, periodYear, periodMonth], map: "DeclWorkpaper_client_period_idx")
+  @@index([approvedById], map: "DeclWorkpaper_approved_by_idx")
+}
+
+model PeriodCloseReview {
+  id                 String                  @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  kind               PeriodCloseKind
+  periodYear         Int
+  startMonth         Int
+  endMonth           Int
+  status             PeriodCloseReviewStatus @default(DRAFT)
+  checklist          Json
+  reviewSummary      Json
+  notes              String?
+  rejectionReason    String?
+  preparedById       String?
+  approvedById       String?
+  preparedAt         DateTime?
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  preparedBy       User?            @relation("PeriodClosePreparedBy", fields: [preparedById], references: [id])
+  approvedBy       User?            @relation("PeriodCloseApprovedBy", fields: [approvedById], references: [id])
+
+  @@unique([clientCompanyId, kind, periodYear, endMonth], map: "PeriodCloseReview_period_key")
+  @@index([accountingOfficeId, status, periodYear], map: "PeriodCloseReview_office_status_year_idx")
+  @@index([clientCompanyId, periodYear, startMonth, endMonth], map: "PeriodCloseReview_client_period_idx")
+  @@index([preparedById], map: "PeriodCloseReview_prepared_by_idx")
+  @@index([approvedById], map: "PeriodCloseReview_approved_by_idx")
 }
 
 model FixedAsset {
@@ -618,39 +674,56 @@ model OfficeObligation {
 }
 
 model Document {
-  id                    String       @id @default(cuid())
-  accountingOfficeId    String
-  clientCompanyId       String
-  documentType          DocumentType
-  series                String?
-  documentNumber        String
-  issueDate             DateTime
-  counterpartyName      String?
-  counterpartyVatNumber String?      @db.VarChar(20)
-  movementCode          String?      @db.VarChar(80)
-  journalCode           String?      @db.VarChar(80)
-  netAmount             Decimal      @db.Decimal(12, 2)
-  vatAmount             Decimal      @db.Decimal(12, 2)
-  totalAmount           Decimal      @db.Decimal(12, 2)
-  vatCategory           String
-  myDataStatus          MyDataStatus @default(DRAFT)
-  myDataMark            String?
-  myDataUid             String?
-  myDataQrUrl           String?
-  myDataXmlPreview      String?      @db.LongText
-  classificationStatus  String?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-  deletedAt             DateTime?
+  id                       String       @id @default(cuid())
+  accountingOfficeId       String
+  clientCompanyId          String
+  documentType             DocumentType
+  series                   String?
+  documentNumber           String
+  issueDate                DateTime
+  counterpartyName         String?
+  counterpartyVatNumber    String?      @db.VarChar(20)
+  movementCode             String?      @db.VarChar(80)
+  journalCode              String?      @db.VarChar(80)
+  netAmount                Decimal      @db.Decimal(12, 2)
+  vatAmount                Decimal      @db.Decimal(12, 2)
+  totalAmount              Decimal      @db.Decimal(12, 2)
+  vatCategory              String
+  paymentMethodType        Int          @default(3)
+  vatExemptionCategory     Int?
+  correlatedInvoiceMark    String?      @db.VarChar(40)
+  withheldAmount           Decimal      @default(0) @db.Decimal(12, 2)
+  withheldCategory         Int?
+  feesAmount               Decimal      @default(0) @db.Decimal(12, 2)
+  feesCategory             Int?
+  stampDutyAmount          Decimal      @default(0) @db.Decimal(12, 2)
+  stampDutyCategory        Int?
+  otherTaxesAmount         Decimal      @default(0) @db.Decimal(12, 2)
+  otherTaxesCategory       Int?
+  deductionsAmount         Decimal      @default(0) @db.Decimal(12, 2)
+  myDataStatus             MyDataStatus @default(DRAFT)
+  myDataMark               String?
+  myDataUid                String?
+  myDataQrUrl              String?
+  myDataClassificationMark String?      @db.VarChar(40)
+  myDataCancellationMark   String?      @db.VarChar(40)
+  myDataCancelledAt        DateTime?
+  myDataXmlPreview         String?      @db.LongText
+  classificationStatus     String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+  deletedAt                DateTime?
 
-  accountingOffice     AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany        ClientCompany            @relation(fields: [clientCompanyId], references: [id])
-  transmissionAttempts TransmissionAttempt[]
-  accountingLinks      DocumentAccountingLink[]
+  accountingOffice      AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany         ClientCompany            @relation(fields: [clientCompanyId], references: [id])
+  transmissionAttempts  TransmissionAttempt[]
+  accountingLinks       DocumentAccountingLink[]
   myDataSnapshotMatches MyDataSnapshot[]         @relation("MyDataSnapshotMatchedDocument")
 
   @@index([accountingOfficeId, clientCompanyId, issueDate])
   @@index([accountingOfficeId, myDataStatus])
+  @@index([myDataClassificationMark])
+  @@index([myDataCancellationMark])
   @@index([clientCompanyId, movementCode, issueDate])
   @@index([clientCompanyId, journalCode, issueDate])
 }
@@ -683,28 +756,28 @@ model MyDataSyncRun {
 }
 
 model MyDataSnapshot {
-  id                       String                     @id @default(cuid())
-  accountingOfficeId       String
-  clientCompanyId          String
-  syncRunId                String
-  matchedDocumentId        String?
-  source                   MyDataSyncSource
-  reconciliationStatus     MyDataReconciliationStatus
-  reconciliationIssues     Json?
-  mark                     String                     @db.VarChar(40)
-  uid                      String?                    @db.VarChar(120)
-  qrUrl                    String?
-  issuerVatNumber          String?                    @db.VarChar(20)
-  counterpartyVatNumber    String?                    @db.VarChar(20)
-  invoiceType              String?                    @db.VarChar(20)
-  series                   String?                    @db.VarChar(80)
-  documentNumber           String                     @db.VarChar(80)
-  issueDate                DateTime?
-  netAmount                Decimal?                   @db.Decimal(12, 2)
-  vatAmount                Decimal?                   @db.Decimal(12, 2)
-  totalAmount              Decimal?                   @db.Decimal(12, 2)
-  rawPayload               Json
-  fetchedAt                DateTime                   @default(now())
+  id                    String                     @id @default(cuid())
+  accountingOfficeId    String
+  clientCompanyId       String
+  syncRunId             String
+  matchedDocumentId     String?
+  source                MyDataSyncSource
+  reconciliationStatus  MyDataReconciliationStatus
+  reconciliationIssues  Json?
+  mark                  String                     @db.VarChar(40)
+  uid                   String?                    @db.VarChar(120)
+  qrUrl                 String?
+  issuerVatNumber       String?                    @db.VarChar(20)
+  counterpartyVatNumber String?                    @db.VarChar(20)
+  invoiceType           String?                    @db.VarChar(20)
+  series                String?                    @db.VarChar(80)
+  documentNumber        String                     @db.VarChar(80)
+  issueDate             DateTime?
+  netAmount             Decimal?                   @db.Decimal(12, 2)
+  vatAmount             Decimal?                   @db.Decimal(12, 2)
+  totalAmount           Decimal?                   @db.Decimal(12, 2)
+  rawPayload            Json
+  fetchedAt             DateTime                   @default(now())
 
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])

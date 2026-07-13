@@ -35,6 +35,22 @@ export interface DeclarationWorkpaper {
       total: number;
       documents: number;
     }>;
+    myDataReconciliation?: {
+      snapshotCount: number;
+      mismatches: number;
+      erpSalesNet: number;
+      erpSalesVat: number;
+      erpPurchasesNet: number;
+      erpPurchasesVat: number;
+      aadeSalesNet: number;
+      aadeSalesVat: number;
+      aadePurchasesNet: number;
+      aadePurchasesVat: number;
+      salesNetDelta: number;
+      salesVatDelta: number;
+      purchasesNetDelta: number;
+      purchasesVatDelta: number;
+    };
   };
   generatedAt: string;
   clientCompany?: {
@@ -66,5 +82,13 @@ export class DeclarationsApiService {
       payload,
       {},
     );
+  }
+
+  markReady(id: string): Observable<DeclarationWorkpaper> {
+    return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/workpapers/${id}/ready`, {}, {});
+  }
+
+  approve(id: string): Observable<DeclarationWorkpaper> {
+    return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/workpapers/${id}/approve`, {}, {});
   }
 }

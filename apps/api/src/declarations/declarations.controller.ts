@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { ACCOUNTING_CONTROL_ROLES, OFFICE_WRITE_ROLES } from '../auth/role-groups';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
@@ -27,5 +27,17 @@ export class DeclarationsController {
     @Body() dto: GenerateVatWorkpaperDto,
   ) {
     return this.declarationsService.generateVatWorkpaper(tenant, dto);
+  }
+
+  @Post('workpapers/:id/ready')
+  @Roles(...OFFICE_WRITE_ROLES)
+  markReady(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.declarationsService.markReady(tenant, id);
+  }
+
+  @Post('workpapers/:id/approve')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  approve(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.declarationsService.approve(tenant, id);
   }
 }

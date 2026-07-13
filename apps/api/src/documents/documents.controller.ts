@@ -55,6 +55,12 @@ export class DocumentsController {
     return this.myDataService.sendTest(tenant, id, dto);
   }
 
+  @Post(':id/mydata/cancel-test')
+  @Roles(...OFFICE_WRITE_ROLES)
+  cancelTestMyData(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.myDataService.cancelTest(tenant, id);
+  }
+
   @Post(':id/mydata/prepare-expense')
   @Roles(...OFFICE_WRITE_ROLES)
   prepareExpenseMyData(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
@@ -65,6 +71,16 @@ export class DocumentsController {
   @Roles(...OFFICE_WRITE_ROLES)
   sendExpenseMockMyData(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.myDataService.sendExpenseMock(tenant, id);
+  }
+
+  @Post(':id/mydata/send-expense-test')
+  @Roles(...OFFICE_WRITE_ROLES)
+  sendExpenseTestMyData(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: SendMyDataDto,
+  ) {
+    return this.myDataService.sendExpenseTest(tenant, id, dto);
   }
 
   @Get(':id/mydata/history')

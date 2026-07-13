@@ -115,4 +115,41 @@ describe('DocumentFormPageComponent', () => {
     );
     expect(router.navigate).toHaveBeenCalledWith(['/documents']);
   });
+
+  it('recalculates the payable total and submits myDATA tax fields', () => {
+    const component = fixture.componentInstance;
+    component.form.patchValue({
+      clientCompanyId: 'company-1',
+      documentType: 'CREDIT_NOTE',
+      documentNumber: '1002',
+      issueDate: '2026-07-14',
+      netAmount: 100,
+      vatAmount: 24,
+      withheldAmount: 20,
+      withheldCategory: '3',
+      feesAmount: 1,
+      feesCategory: '10',
+      stampDutyAmount: 1.2,
+      stampDutyCategory: '1',
+      otherTaxesAmount: 2,
+      otherTaxesCategory: '17',
+      deductionsAmount: 0.2,
+      correlatedInvoiceMark: '4000012345',
+    });
+
+    expect(component.form.controls.totalAmount.value).toBe(108);
+    component.submit();
+
+    expect(documentsApi.create).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        paymentMethodType: 3,
+        correlatedInvoiceMark: '4000012345',
+        withheldAmount: 20,
+        withheldCategory: 3,
+        stampDutyAmount: 1.2,
+        stampDutyCategory: 1,
+        totalAmount: 108,
+      }),
+    );
+  });
 });

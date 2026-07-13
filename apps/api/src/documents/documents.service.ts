@@ -42,9 +42,23 @@ export class DocumentsService {
       throw new NotFoundException('Client company was not found.');
     }
 
-    const expectedTotal = Number((dto.netAmount + dto.vatAmount).toFixed(2));
+    this.validateMyDataFields(dto);
+
+    const expectedTotal = Number(
+      (
+        dto.netAmount +
+        dto.vatAmount -
+        (dto.withheldAmount ?? 0) +
+        (dto.feesAmount ?? 0) +
+        (dto.stampDutyAmount ?? 0) +
+        (dto.otherTaxesAmount ?? 0) -
+        (dto.deductionsAmount ?? 0)
+      ).toFixed(2),
+    );
     if (Number(dto.totalAmount.toFixed(2)) !== expectedTotal) {
-      throw new BadRequestException('Total amount must equal net amount plus VAT amount.');
+      throw new BadRequestException(
+        'Total amount must equal net + VAT - withholding + fees + digital transaction duty + other taxes - deductions.',
+      );
     }
 
     const setupCodes = await this.resolveSetupCodes(tenant, dto);
@@ -65,6 +79,18 @@ export class DocumentsService {
         vatAmount: dto.vatAmount,
         totalAmount: dto.totalAmount,
         vatCategory: dto.vatCategory,
+        paymentMethodType: dto.paymentMethodType ?? 3,
+        vatExemptionCategory: dto.vatExemptionCategory,
+        correlatedInvoiceMark: dto.correlatedInvoiceMark,
+        withheldAmount: dto.withheldAmount ?? 0,
+        withheldCategory: dto.withheldCategory,
+        feesAmount: dto.feesAmount ?? 0,
+        feesCategory: dto.feesCategory,
+        stampDutyAmount: dto.stampDutyAmount ?? 0,
+        stampDutyCategory: dto.stampDutyCategory,
+        otherTaxesAmount: dto.otherTaxesAmount ?? 0,
+        otherTaxesCategory: dto.otherTaxesCategory,
+        deductionsAmount: dto.deductionsAmount ?? 0,
       },
       include: {
         clientCompany: {
@@ -80,6 +106,39 @@ export class DocumentsService {
         },
       },
     });
+  }
+
+  private validateMyDataFields(dto: CreateDocumentDto): void {
+    if (dto.vatCategory === 'VAT_0' && dto.vatExemptionCategory === undefined) {
+      throw new BadRequestException('VAT exemption category is required for AADE 0% VAT.');
+    }
+
+    if (dto.vatCategory !== 'VAT_0' && dto.vatExemptionCategory !== undefined) {
+      throw new BadRequestException('VAT exemption category is allowed only for AADE 0% VAT.');
+    }
+
+    if (dto.documentType !== DocumentType.CREDIT_NOTE && dto.correlatedInvoiceMark) {
+      throw new BadRequestException('A correlated invoice MARK is allowed only for credit notes.');
+    }
+
+    this.requireTaxCategory('Withholding', dto.withheldAmount, dto.withheldCategory);
+    this.requireTaxCategory('Fees', dto.feesAmount, dto.feesCategory);
+    this.requireTaxCategory(
+      'Digital transaction duty',
+      dto.stampDutyAmount,
+      dto.stampDutyCategory,
+    );
+    this.requireTaxCategory('Other taxes', dto.otherTaxesAmount, dto.otherTaxesCategory);
+  }
+
+  private requireTaxCategory(label: string, amount?: number, category?: number): void {
+    if ((amount ?? 0) > 0 && category === undefined) {
+      throw new BadRequestException(`${label} category is required when its amount is positive.`);
+    }
+
+    if ((amount ?? 0) === 0 && category !== undefined) {
+      throw new BadRequestException(`${label} category requires a positive amount.`);
+    }
   }
 
   private toWhereInput(tenant: TenantContext, query: FindDocumentsQueryDto) {

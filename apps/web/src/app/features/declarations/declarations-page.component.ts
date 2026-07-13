@@ -8,6 +8,11 @@ import {
   DeclarationWorkpaper,
   DeclarationsApiService,
 } from '../../core/api/declarations-api.service';
+import {
+  PeriodCloseCheck,
+  PeriodCloseReview,
+  PeriodClosesApiService,
+} from '../../core/api/period-closes-api.service';
 
 @Component({
   selector: 'ol-declarations-page',
@@ -64,6 +69,113 @@ import {
       </div>
     </section>
 
+    <section class="card generator">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">
+            <span class="material-symbols-outlined">fact_check</span> Κλείσιμο περιόδου
+          </h2>
+          <p class="card-subtitle">
+            Δημιουργεί αυτόματο checklist από λογιστική, myDATA και VAT workpaper και το
+            προωθεί για έγκριση λογιστή.
+          </p>
+        </div>
+      </div>
+      <div class="card-body form-grid close-generator">
+        <label>
+          Πελάτης
+          <select [(ngModel)]="closeClientCompanyId">
+            <option value="">Επιλογή</option>
+            <option *ngFor="let company of companies$ | async" [value]="company.id">
+              {{ company.legalName }}
+            </option>
+          </select>
+        </label>
+        <label>
+          Έτος
+          <input [(ngModel)]="closeYear" type="number" />
+        </label>
+        <label>
+          Περίοδος
+          <select [(ngModel)]="closeKind">
+            <option value="MONTHLY">Μήνας</option>
+            <option value="QUARTERLY">Τρίμηνο</option>
+          </select>
+        </label>
+        <label>
+          {{ closeKind === 'QUARTERLY' ? 'Τελευταίος μήνας τριμήνου' : 'Μήνας' }}
+          <input [(ngModel)]="closeEndMonth" type="number" min="1" max="12" />
+        </label>
+        <div class="actions">
+          <button class="btn btn-primary" type="button" (click)="generateCloseReview()">
+            Generate review
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section *ngIf="closeReviews$ | async as reviews">
+      <div class="workpaper-list close-list" *ngIf="reviews.length > 0">
+        <article class="card close-review" *ngFor="let review of reviews">
+          <div class="workpaper-head">
+            <div>
+              <h2>
+                {{ review.kind === 'MONTHLY' ? 'Μηνιαίο' : 'Τριμηνιαίο' }} κλείσιμο
+                {{ closePeriodLabel(review) }}
+              </h2>
+              <p>{{ review.clientCompany?.legalName }} — {{ review.clientCompany?.vatNumber }}</p>
+            </div>
+            <span class="badge">{{ closeStatusLabel(review.status) }}</span>
+          </div>
+
+          <div class="close-summary">
+            <span>{{ review.reviewSummary.documentCount }} παραστατικά</span>
+            <span>{{ review.reviewSummary.unpostedDocuments }} μη λογιστικοποιημένα</span>
+            <span>{{ review.reviewSummary.unresolvedMyDataDocuments }} myDATA εκκρεμή</span>
+            <span>{{ review.reviewSummary.reconciliationMismatches }} αποκλίσεις ΑΑΔΕ</span>
+            <span>GL διαφορά {{ review.reviewSummary.journalDifference | number: '1.2-2' }} €</span>
+          </div>
+
+          <div class="checklist">
+            <label class="check-row" *ngFor="let item of review.checklist">
+              <input
+                type="checkbox"
+                [checked]="item.completed"
+                [disabled]="item.automatic || !canEditReview(review)"
+                (change)="toggleCloseCheck(review, item, $event)"
+              />
+              <span>
+                <strong>{{ item.label }}</strong>
+                <small>{{ item.details }}{{ item.automatic ? ' · αυτόματο' : '' }}</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="close-actions">
+            <span *ngIf="review.rejectionReason" class="rejection">
+              Απόρριψη: {{ review.rejectionReason }}
+            </span>
+            <button
+              class="btn btn-secondary"
+              type="button"
+              *ngIf="canEditReview(review)"
+              (click)="submitCloseReview(review)"
+            >
+              Για έγκριση
+            </button>
+            <button
+              class="btn btn-primary"
+              type="button"
+              *ngIf="review.status === 'READY_FOR_REVIEW'"
+              (click)="approveCloseReview(review)"
+            >
+              Έγκριση λογιστή
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section *ngIf="workpapers$ | async as workpapers">
       <div class="workpaper-list" *ngIf="workpapers.length > 0; else emptyWorkpapers">
         <article class="card workpaper" *ngFor="let workpaper of workpapers">
@@ -76,6 +188,23 @@ import {
               </p>
             </div>
             <div class="workpaper-actions">
+              <span class="badge">{{ workpaper.status }}</span>
+              <button
+                class="btn btn-secondary"
+                type="button"
+                *ngIf="workpaper.status === 'DRAFT'"
+                (click)="markWorkpaperReady(workpaper)"
+              >
+                Για έγκριση
+              </button>
+              <button
+                class="btn btn-primary"
+                type="button"
+                *ngIf="workpaper.status === 'READY'"
+                (click)="approveWorkpaper(workpaper)"
+              >
+                Έγκριση λογιστή
+              </button>
               <button class="btn btn-secondary" type="button" (click)="toggleDetails(workpaper.id)">
                 <span class="material-symbols-outlined">
                   {{ expandedId === workpaper.id ? 'expand_less' : 'expand_more' }}
@@ -163,6 +292,22 @@ import {
               </div>
             </div>
 
+            <div class="mini-table reconciliation" *ngIf="workpaper.totals.myDataReconciliation as rec">
+              <h3>Συμφωνία βιβλίων vs myDATA</h3>
+              <table>
+                <thead>
+                  <tr><th></th><th class="tr">ERP</th><th class="tr">ΑΑΔΕ</th><th class="tr">Διαφορά</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Πωλήσεις καθαρά</td><td class="tr">{{ rec.erpSalesNet | number: '1.2-2' }}</td><td class="tr">{{ rec.aadeSalesNet | number: '1.2-2' }}</td><td class="tr">{{ rec.salesNetDelta | number: '1.2-2' }}</td></tr>
+                  <tr><td>ΦΠΑ εκροών</td><td class="tr">{{ rec.erpSalesVat | number: '1.2-2' }}</td><td class="tr">{{ rec.aadeSalesVat | number: '1.2-2' }}</td><td class="tr">{{ rec.salesVatDelta | number: '1.2-2' }}</td></tr>
+                  <tr><td>Αγορές καθαρά</td><td class="tr">{{ rec.erpPurchasesNet | number: '1.2-2' }}</td><td class="tr">{{ rec.aadePurchasesNet | number: '1.2-2' }}</td><td class="tr">{{ rec.purchasesNetDelta | number: '1.2-2' }}</td></tr>
+                  <tr><td>ΦΠΑ εισροών</td><td class="tr">{{ rec.erpPurchasesVat | number: '1.2-2' }}</td><td class="tr">{{ rec.aadePurchasesVat | number: '1.2-2' }}</td><td class="tr">{{ rec.purchasesVatDelta | number: '1.2-2' }}</td></tr>
+                </tbody>
+              </table>
+              <small>{{ rec.snapshotCount }} AADE snapshots · {{ rec.mismatches }} αποκλίσεις</small>
+            </div>
+
             <div class="mini-table">
               <h3>Τύποι παραστατικών</h3>
               <table>
@@ -212,6 +357,79 @@ import {
     `
       .generator {
         margin-bottom: 16px;
+      }
+
+      .close-generator {
+        grid-template-columns: minmax(220px, 2fr) 1fr 1fr 1fr auto;
+      }
+
+      .close-list {
+        margin-bottom: 16px;
+      }
+
+      .close-review {
+        padding: 16px;
+      }
+
+      .close-summary,
+      .close-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .close-summary span {
+        padding: 5px 8px;
+        border-radius: 6px;
+        background: var(--surface-2);
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
+      .checklist {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 12px 0;
+      }
+
+      .check-row {
+        display: flex;
+        grid-template: none;
+        grid-template-columns: none;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 9px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+      }
+
+      .check-row input {
+        margin-top: 2px;
+      }
+
+      .check-row span,
+      .check-row small {
+        display: grid;
+        gap: 3px;
+      }
+
+      .check-row small,
+      .reconciliation > small {
+        color: var(--muted);
+        font-size: 0.72rem;
+      }
+
+      .close-actions {
+        justify-content: flex-end;
+      }
+
+      .rejection {
+        margin-right: auto;
+        color: var(--err);
+        font-size: 0.78rem;
       }
 
       .form-grid {
@@ -350,7 +568,9 @@ import {
       @media (max-width: 1080px) {
         .form-grid,
         .details-grid,
-        .totals-strip {
+        .totals-strip,
+        .close-generator,
+        .checklist {
           grid-template-columns: 1fr;
         }
 
@@ -379,15 +599,24 @@ import {
 export class DeclarationsPageComponent {
   private readonly declarationsApi = inject(DeclarationsApiService);
   private readonly reload$ = new BehaviorSubject<void>(undefined);
+  private readonly periodClosesApi = inject(PeriodClosesApiService);
+  private readonly closeReload$ = new BehaviorSubject<void>(undefined);
 
   readonly companies$ = inject(CompaniesApiService).findAll();
   readonly workpapers$ = this.reload$.pipe(switchMap(() => this.declarationsApi.findWorkpapers()));
+  readonly closeReviews$ = this.closeReload$.pipe(
+    switchMap(() => this.periodClosesApi.findAll()),
+  );
   clientCompanyId = '';
   year = new Date().getFullYear();
   month = new Date().getMonth() + 1;
   expandedId = '';
   message = '';
   errorMessage = '';
+  closeClientCompanyId = '';
+  closeYear = new Date().getFullYear();
+  closeKind: 'MONTHLY' | 'QUARTERLY' = 'MONTHLY';
+  closeEndMonth = new Date().getMonth() + 1;
 
   generate(): void {
     this.message = '';
@@ -406,6 +635,101 @@ export class DeclarationsPageComponent {
         },
         error: (error: unknown) => this.showError(error),
       });
+  }
+
+  generateCloseReview(): void {
+    this.clearMessages();
+    this.periodClosesApi
+      .generate({
+        clientCompanyId: this.closeClientCompanyId,
+        year: this.closeYear,
+        kind: this.closeKind,
+        endMonth: this.closeEndMonth,
+      })
+      .subscribe({
+        next: () => {
+          this.message = 'Το checklist κλεισίματος δημιουργήθηκε.';
+          this.closeReload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
+  }
+
+  toggleCloseCheck(
+    review: PeriodCloseReview,
+    item: PeriodCloseCheck,
+    event: Event,
+  ): void {
+    const completed = (event.target as HTMLInputElement).checked;
+    this.clearMessages();
+    this.periodClosesApi.updateChecklist(review.id, { code: item.code, completed }).subscribe({
+      next: () => this.closeReload$.next(),
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  submitCloseReview(review: PeriodCloseReview): void {
+    this.clearMessages();
+    this.periodClosesApi.submit(review.id).subscribe({
+      next: () => {
+        this.message = 'Το κλείσιμο στάλθηκε για έγκριση.';
+        this.closeReload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  approveCloseReview(review: PeriodCloseReview): void {
+    this.clearMessages();
+    this.periodClosesApi.approve(review.id).subscribe({
+      next: () => {
+        this.message = 'Το κλείσιμο εγκρίθηκε από λογιστή.';
+        this.closeReload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  markWorkpaperReady(workpaper: DeclarationWorkpaper): void {
+    this.clearMessages();
+    this.declarationsApi.markReady(workpaper.id).subscribe({
+      next: () => {
+        this.message = 'Το workpaper στάλθηκε για έγκριση.';
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  approveWorkpaper(workpaper: DeclarationWorkpaper): void {
+    this.clearMessages();
+    this.declarationsApi.approve(workpaper.id).subscribe({
+      next: () => {
+        this.message = 'Το workpaper εγκρίθηκε.';
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  canEditReview(review: PeriodCloseReview): boolean {
+    return review.status === 'DRAFT' || review.status === 'REJECTED';
+  }
+
+  closePeriodLabel(review: PeriodCloseReview): string {
+    return review.startMonth === review.endMonth
+      ? `${String(review.endMonth).padStart(2, '0')}/${review.periodYear}`
+      : `${String(review.startMonth).padStart(2, '0')}–${String(review.endMonth).padStart(2, '0')}/${review.periodYear}`;
+  }
+
+  closeStatusLabel(status: PeriodCloseReview['status']): string {
+    const labels: Record<PeriodCloseReview['status'], string> = {
+      DRAFT: 'Πρόχειρο',
+      READY_FOR_REVIEW: 'Για έγκριση',
+      APPROVED: 'Εγκεκριμένο',
+      REJECTED: 'Απορρίφθηκε',
+    };
+    return labels[status];
   }
 
   toggleDetails(id: string): void {
@@ -499,6 +823,11 @@ export class DeclarationsPageComponent {
       return;
     }
     this.errorMessage = 'Request failed.';
+  }
+
+  private clearMessages(): void {
+    this.message = '';
+    this.errorMessage = '';
   }
 }
 

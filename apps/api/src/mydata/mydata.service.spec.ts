@@ -10,9 +10,11 @@ import {
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { AadeMyDataTestProvider } from './aade-mydata-test.provider';
+import { SyncMyDataDocsSourceDto } from './dto/sync-mydata-docs.dto';
 import { MockMyDataProvider } from './mydata-mock.service';
 import { MyDataMappingService } from './mydata-mapping.service';
 import { MyDataService } from './mydata.service';
+import { MyDataXmlValidationService } from './mydata-xml-validation.service';
 
 const tenant: TenantContext = {
   accountingOfficeId: 'office-1',
@@ -35,10 +37,25 @@ const document = {
   vatAmount: new Prisma.Decimal('24.00'),
   totalAmount: new Prisma.Decimal('124.00'),
   vatCategory: 'VAT_24',
+  paymentMethodType: 3,
+  vatExemptionCategory: null,
+  correlatedInvoiceMark: null,
+  withheldAmount: new Prisma.Decimal('0.00'),
+  withheldCategory: null,
+  feesAmount: new Prisma.Decimal('0.00'),
+  feesCategory: null,
+  stampDutyAmount: new Prisma.Decimal('0.00'),
+  stampDutyCategory: null,
+  otherTaxesAmount: new Prisma.Decimal('0.00'),
+  otherTaxesCategory: null,
+  deductionsAmount: new Prisma.Decimal('0.00'),
   myDataStatus: MyDataStatus.DRAFT,
   myDataMark: null,
   myDataUid: null,
   myDataQrUrl: null,
+  myDataClassificationMark: null,
+  myDataCancellationMark: null,
+  myDataCancelledAt: null,
   myDataXmlPreview: null,
   classificationStatus: null,
   createdAt: new Date('2026-07-01T00:00:00.000Z'),
@@ -79,6 +96,7 @@ describe('MyDataMappingService', () => {
     expect(xml).toContain('<name>Demo &lt;Company&gt;</name>');
     expect(xml).toContain('<name>Customer &amp; Co</name>');
     expect(xml).toContain('<invoiceType>1.1</invoiceType>');
+    expect(xml).toContain('<icls:classificationType>E3_561_001</icls:classificationType>');
     expect(xml).toContain('<totalGrossValue>124.00</totalGrossValue>');
   });
 
@@ -92,13 +110,125 @@ describe('MyDataMappingService', () => {
       BadRequestException,
     );
   });
+
+  it('maps payment, invoice-level taxes and correlated credit note fields', () => {
+    const creditDocument = {
+      ...document,
+      documentType: DocumentType.CREDIT_NOTE,
+      paymentMethodType: 5,
+      correlatedInvoiceMark: '4000012345',
+      withheldAmount: new Prisma.Decimal('20.00'),
+      withheldCategory: 3,
+      feesAmount: new Prisma.Decimal('1.00'),
+      feesCategory: 10,
+      stampDutyAmount: new Prisma.Decimal('1.20'),
+      stampDutyCategory: 1,
+      otherTaxesAmount: new Prisma.Decimal('2.00'),
+      otherTaxesCategory: 17,
+      deductionsAmount: new Prisma.Decimal('0.20'),
+      totalAmount: new Prisma.Decimal('108.00'),
+    };
+
+    const xml = new MyDataMappingService().mapDocumentToXml(creditDocument);
+
+    expect(xml).toContain('<invoiceType>5.1</invoiceType>');
+    expect(xml).toContain('<correlatedInvoices>4000012345</correlatedInvoices>');
+    expect(xml).toContain('<type>5</type>');
+    expect(xml).toContain('<taxType>1</taxType>');
+    expect(xml).toContain('<taxCategory>3</taxCategory>');
+    expect(xml).toContain('<taxType>5</taxType>');
+    expect(xml).toContain('<totalWithheldAmount>20.00</totalWithheldAmount>');
+    expect(xml).toContain('<totalGrossValue>108.00</totalGrossValue>');
+    expect(() => new MyDataXmlValidationService().validateInvoices(xml)).not.toThrow();
+  });
+
+  it('maps an uncorrelated credit note to AADE type 5.2', () => {
+    const xml = new MyDataMappingService().mapDocumentToXml({
+      ...document,
+      documentType: DocumentType.CREDIT_NOTE,
+    });
+
+    expect(xml).toContain('<invoiceType>5.2</invoiceType>');
+    expect(xml).not.toContain('<correlatedInvoices>');
+  });
+
+  it('maps a matched purchase invoice to AADE expenses classification XML', () => {
+    const purchaseDocument = {
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataMark: '4000012345',
+    };
+
+    const xml = new MyDataMappingService().mapPurchaseDocumentToExpenseClassificationXml(
+      purchaseDocument,
+    );
+
+    expect(xml).toContain('<ExpensesClassificationsDoc');
+    expect(xml).toContain('<invoiceMark>4000012345</invoiceMark>');
+    expect(xml).toContain('<entityVatNumber>999888777</entityVatNumber>');
+    expect(xml).toContain('<classificationType>E3_102_001</classificationType>');
+    expect(xml).toContain('<classificationCategory>category2_4</classificationCategory>');
+    expect(xml).toContain('<classificationType>VAT_361</classificationType>');
+    expect(xml).toContain('<vatCategory>1</vatCategory>');
+    expect(xml).toContain('<classificationPostMode>1</classificationPostMode>');
+    expect(() =>
+      new MyDataXmlValidationService().validateExpenseClassifications(xml),
+    ).not.toThrow();
+  });
+
+  it('validates generated invoices against the official AADE v2.0.1 XSD', () => {
+    const xml = new MyDataMappingService().mapDocumentToXml(document);
+
+    expect(() => new MyDataXmlValidationService().validateInvoices(xml)).not.toThrow();
+  });
+
+  it('rejects expense XML that violates the official AADE v2.0.1 XSD', () => {
+    const purchaseDocument = {
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataMark: '4000012345',
+    };
+    const xml = new MyDataMappingService()
+      .mapPurchaseDocumentToExpenseClassificationXml(purchaseDocument)
+      .replace(
+        '<classificationPostMode>1</classificationPostMode>',
+        '<classificationPostMode>2</classificationPostMode>',
+      );
+
+    expect(() => new MyDataXmlValidationService().validateExpenseClassifications(xml)).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('requires an AADE MARK before preparing expense classification XML', () => {
+    const purchaseDocument = {
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+    };
+
+    expect(() =>
+      new MyDataMappingService().mapPurchaseDocumentToExpenseClassificationXml(purchaseDocument),
+    ).toThrow(BadRequestException);
+  });
 });
 
 describe('MyDataService', () => {
   let prisma: {
     document: {
       findFirst: jest.Mock;
+      findMany: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
+    };
+    clientCompany: {
+      findFirst: jest.Mock;
+    };
+    myDataSyncRun: {
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    myDataSnapshot: {
+      upsert: jest.Mock;
     };
     transmissionAttempt: {
       create: jest.Mock;
@@ -107,7 +237,14 @@ describe('MyDataService', () => {
   };
   let provider: jest.Mocked<Pick<MockMyDataProvider, 'providerName' | 'transmitInvoice'>>;
   let aadeTestProvider: jest.Mocked<
-    Pick<AadeMyDataTestProvider, 'providerName' | 'transmitInvoice'>
+    Pick<
+      AadeMyDataTestProvider,
+      | 'providerName'
+      | 'transmitInvoice'
+      | 'transmitExpenseClassification'
+      | 'cancelInvoice'
+      | 'requestDocs'
+    >
   >;
   let service: MyDataService;
 
@@ -115,7 +252,19 @@ describe('MyDataService', () => {
     prisma = {
       document: {
         findFirst: jest.fn().mockResolvedValue(document),
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue(document),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      clientCompany: {
+        findFirst: jest.fn().mockResolvedValue(document.clientCompany),
+      },
+      myDataSyncRun: {
+        create: jest.fn().mockResolvedValue({ id: 'sync-1' }),
+        update: jest.fn().mockResolvedValue({ id: 'sync-1' }),
+      },
+      myDataSnapshot: {
+        upsert: jest.fn(),
       },
       transmissionAttempt: {
         create: jest.fn().mockResolvedValue({ id: 'attempt-1' }),
@@ -135,6 +284,9 @@ describe('MyDataService', () => {
     aadeTestProvider = {
       providerName: 'aade-mydata',
       transmitInvoice: jest.fn(),
+      transmitExpenseClassification: jest.fn(),
+      cancelInvoice: jest.fn(),
+      requestDocs: jest.fn(),
     };
 
     service = new MyDataService(
@@ -246,17 +398,30 @@ describe('MyDataService', () => {
       myDataMark: 'EXISTING-MARK',
     });
 
-    await expect(service.prepare(tenant, 'document-1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(service.prepare(tenant, 'document-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.document.update).not.toHaveBeenCalled();
   });
 
-  it('blocks duplicate sends unless forced', async () => {
+  it('blocks duplicate sends even when force is requested', async () => {
     prisma.document.findFirst.mockResolvedValue({
       ...document,
       myDataStatus: MyDataStatus.SENT,
       myDataMark: 'EXISTING-MARK',
+    });
+
+    await expect(service.sendTest(tenant, 'document-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.sendTest(tenant, 'document-1', { force: true })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(aadeTestProvider.transmitInvoice).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit retry after a failed transmission', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      myDataStatus: MyDataStatus.FAILED,
     });
 
     await expect(service.sendTest(tenant, 'document-1')).rejects.toBeInstanceOf(
@@ -268,8 +433,7 @@ describe('MyDataService', () => {
   it('records forced retries explicitly', async () => {
     prisma.document.findFirst.mockResolvedValue({
       ...document,
-      myDataStatus: MyDataStatus.SENT,
-      myDataMark: 'EXISTING-MARK',
+      myDataStatus: MyDataStatus.FAILED,
     });
     aadeTestProvider.transmitInvoice.mockResolvedValue({
       status: 'sent',
@@ -322,5 +486,193 @@ describe('MyDataService', () => {
       BadRequestException,
     );
     expect(aadeTestProvider.transmitInvoice).not.toHaveBeenCalled();
+  });
+
+  it('sends expense classification through the AADE test provider', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataMark: '4000012345',
+    });
+    aadeTestProvider.transmitExpenseClassification.mockResolvedValue({
+      status: 'sent',
+      environment: 'test',
+      endpoint: 'https://mydataapidev.aade.gr/SendExpensesClassification',
+      mark: '4000012345',
+      classificationMark: '9000012345',
+    });
+
+    const result = await service.sendExpenseTest(tenant, 'document-1');
+
+    expect(result.status).toBe(MyDataStatus.SENT);
+    expect(result.classificationMark).toBe('9000012345');
+    expect(aadeTestProvider.transmitExpenseClassification).toHaveBeenCalledWith({
+      documentId: 'document-1',
+      payloadXml: expect.stringContaining('<ExpensesClassificationsDoc'),
+      postPerInvoice: true,
+      force: undefined,
+      credentialEnvPrefix: 'AADE_MYDATA',
+    });
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: 'document-1' },
+      data: expect.objectContaining({
+        myDataStatus: MyDataStatus.SENT,
+        myDataMark: '4000012345',
+        myDataClassificationMark: '9000012345',
+        classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+      }),
+    });
+    expect(prisma.transmissionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentId: 'document-1',
+        provider: 'aade-mydata',
+        environment: 'test',
+        endpoint: 'https://mydataapidev.aade.gr/SendExpensesClassification',
+        status: TransmissionStatus.SENT,
+      }),
+    });
+  });
+
+  it('cancels an already-sent issued document through the AADE test provider', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      myDataStatus: MyDataStatus.SENT,
+      myDataMark: '4000012345',
+    });
+    aadeTestProvider.cancelInvoice.mockResolvedValue({
+      status: 'sent',
+      environment: 'test',
+      endpoint:
+        'https://mydataapidev.aade.gr/CancelInvoice?mark=4000012345&entityVatNumber=999888777',
+      mark: '4000012345',
+      cancellationMark: '7000012345',
+    });
+
+    const result = await service.cancelTest(tenant, 'document-1');
+
+    expect(result.status).toBe(MyDataStatus.CANCELLED);
+    expect(result.cancellationMark).toBe('7000012345');
+    expect(aadeTestProvider.cancelInvoice).toHaveBeenCalledWith({
+      documentId: 'document-1',
+      mark: '4000012345',
+      entityVatNumber: '999888777',
+      credentialEnvPrefix: 'AADE_MYDATA',
+    });
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: 'document-1' },
+      data: {
+        myDataStatus: MyDataStatus.CANCELLED,
+        myDataCancellationMark: '7000012345',
+        myDataCancelledAt: expect.any(Date),
+      },
+    });
+    expect(prisma.transmissionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentId: 'document-1',
+        provider: 'aade-mydata',
+        environment: 'test',
+        endpoint:
+          'https://mydataapidev.aade.gr/CancelInvoice?mark=4000012345&entityVatNumber=999888777',
+        status: TransmissionStatus.SENT,
+        requestPayload: 'CancelInvoice mark=4000012345',
+      }),
+    });
+  });
+
+  it('records failed cancellation attempts without changing document status', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      myDataStatus: MyDataStatus.SENT,
+      myDataMark: '4000012345',
+    });
+    aadeTestProvider.cancelInvoice.mockResolvedValue({
+      status: 'failed',
+      environment: 'test',
+      endpoint: 'https://mydataapidev.aade.gr/CancelInvoice?mark=4000012345',
+      errorCode: 'AADE_CANCEL_REJECTED',
+      errorMessage: 'Cancellation rejected',
+      rawResponse: { error: 'rejected' },
+    });
+
+    await expect(service.cancelTest(tenant, 'document-1')).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
+
+    expect(prisma.document.update).not.toHaveBeenCalled();
+    expect(prisma.transmissionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentId: 'document-1',
+        provider: 'aade-mydata',
+        environment: 'test',
+        endpoint: 'https://mydataapidev.aade.gr/CancelInvoice?mark=4000012345',
+        status: TransmissionStatus.FAILED,
+        errorCode: 'AADE_CANCEL_REJECTED',
+        errorMessage: 'Cancellation rejected',
+      }),
+    });
+  });
+
+  it('applies cancellation and expense classification MARKs returned by RequestDocs', async () => {
+    aadeTestProvider.requestDocs.mockResolvedValue({
+      status: 'received',
+      environment: 'test',
+      endpoint: 'https://mydataapidev.aade.gr/RequestDocs?mark=0',
+      rawResponse: {
+        RequestedDoc: {
+          cancelledInvoicesDoc: {
+            cancelledInvoice: {
+              invoiceMark: '4000012345',
+              cancellationMark: '7000012345',
+              cancellationDate: '2026-07-13',
+            },
+          },
+          expensesClassificationsDoc: {
+            expensesInvoiceClassification: {
+              invoiceMark: '4000012345',
+              classificationMark: '9000012345',
+            },
+          },
+        },
+      },
+    });
+
+    const result = await service.syncRequestDocs(tenant, {
+      clientCompanyId: 'company-1',
+      source: SyncMyDataDocsSourceDto.REQUEST_DOCS,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        cancellationCount: 1,
+        cancellationsApplied: 1,
+        expenseClassificationCount: 1,
+        classificationsApplied: 1,
+      }),
+    );
+    expect(prisma.document.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        accountingOfficeId: 'office-1',
+        clientCompanyId: 'company-1',
+        myDataMark: '4000012345',
+        deletedAt: null,
+      },
+      data: {
+        myDataStatus: MyDataStatus.CANCELLED,
+        myDataCancellationMark: '7000012345',
+        myDataCancelledAt: new Date('2026-07-13T00:00:00.000Z'),
+      },
+    });
+    expect(prisma.document.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        accountingOfficeId: 'office-1',
+        clientCompanyId: 'company-1',
+        myDataMark: '4000012345',
+        deletedAt: null,
+      },
+      data: {
+        myDataClassificationMark: '9000012345',
+        classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+      },
+    });
   });
 });

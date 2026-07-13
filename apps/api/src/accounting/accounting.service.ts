@@ -453,6 +453,25 @@ export class AccountingService {
       throw new BadRequestException('Close the accounting period before locking it.');
     }
 
+    const approvedReview = await this.prisma.periodCloseReview.findFirst({
+      where: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        clientCompanyId: period.clientCompanyId,
+        periodYear: period.fiscalYear,
+        status: 'APPROVED',
+        OR: [
+          { kind: 'MONTHLY', startMonth: period.periodMonth, endMonth: period.periodMonth },
+          { kind: 'QUARTERLY', startMonth: { lte: period.periodMonth }, endMonth: { gte: period.periodMonth } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!approvedReview) {
+      throw new BadRequestException(
+        'Approve the monthly or quarterly close review before locking this accounting period.',
+      );
+    }
+
     return this.prisma.accountingPeriod.update({
       where: { id: period.id },
       data: {

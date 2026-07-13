@@ -137,19 +137,13 @@ export class MyDataService {
     const document = await this.getTenantDocument(tenant, documentId);
     this.ensurePurchaseInvoice(document.documentType);
     this.ensureNotAlreadySent(document);
-    const xml =
-      document.myDataXmlPreview ??
-      this.mappingService.mapPurchaseDocumentToExpenseClassificationXml(document);
+    const xml = this.mappingService.mapPurchaseDocumentToExpenseClassificationXml(document);
     const mark = `MOCK-EXPENSE-MARK-${document.id}`;
     const uid = `MOCK-EXPENSE-UID-${document.id}`;
 
     await this.prisma.document.update({
       where: { id: document.id },
       data: {
-        myDataStatus: MyDataStatus.SENT,
-        myDataMark: mark,
-        myDataUid: uid,
-        myDataQrUrl: `https://mydata.example.invalid/mock-expense/${document.id}`,
         myDataXmlPreview: xml,
         classificationStatus: 'EXPENSE_CLASSIFIED_MOCK',
       },
@@ -174,11 +168,216 @@ export class MyDataService {
 
     return {
       documentId: document.id,
-      status: MyDataStatus.SENT,
-      mark,
+      status: document.myDataStatus,
+      mark: document.myDataMark,
+      classificationMark: mark,
       uid,
       attempt,
     };
+  }
+
+  async sendExpenseTest(
+    tenant: TenantContext,
+    documentId: string,
+    options: MyDataSendOptions = {},
+  ) {
+    const document = await this.getTenantDocument(tenant, documentId);
+    this.ensurePurchaseInvoice(document.documentType);
+    this.ensureSendAllowed(document, options.force);
+
+    if (!this.aadeTestProvider.transmitExpenseClassification) {
+      throw new BadRequestException(
+        'The configured myDATA provider does not support SendExpensesClassification.',
+      );
+    }
+
+    const xml = this.mappingService.mapPurchaseDocumentToExpenseClassificationXml(document);
+    const correlationId = randomUUID();
+
+    try {
+      const response = await this.aadeTestProvider.transmitExpenseClassification({
+        documentId: document.id,
+        payloadXml: xml,
+        postPerInvoice: true,
+        force: options.force,
+        credentialEnvPrefix: this.resolveCredentialEnvPrefix(
+          this.aadeTestProvider,
+          document.clientCompany,
+        ),
+      });
+
+      if (response.status === 'failed') {
+        return this.recordFailedTransmission(
+          document.id,
+          xml,
+          this.aadeTestProvider.providerName,
+          response.errorMessage,
+          response.errorCode ?? 'MYDATA_EXPENSE_CLASSIFICATION_FAILED',
+          response.rawResponse,
+          {
+            environment: response.environment,
+            endpoint: response.endpoint,
+            correlationId,
+            forcedRetry: options.force === true,
+          },
+        );
+      }
+
+      await this.prisma.document.update({
+        where: { id: document.id },
+        data: {
+          myDataStatus: MyDataStatus.SENT,
+          myDataMark: response.mark ?? document.myDataMark,
+          myDataUid: response.uid ?? document.myDataUid,
+          myDataQrUrl: response.qrUrl ?? document.myDataQrUrl,
+          myDataClassificationMark: response.classificationMark,
+          myDataXmlPreview: xml,
+          classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+        },
+      });
+
+      const attempt = await this.prisma.transmissionAttempt.create({
+        data: {
+          documentId: document.id,
+          provider: this.aadeTestProvider.providerName,
+          environment:
+            response.environment ?? this.resolveAttemptEnvironment(this.aadeTestProvider),
+          endpoint: response.endpoint,
+          correlationId,
+          forcedRetry: options.force === true,
+          status: TransmissionStatus.SENT,
+          requestPayload: xml,
+          responsePayload: this.toResponsePayload(response),
+        },
+      });
+
+      return {
+        documentId: document.id,
+        status: MyDataStatus.SENT,
+        mark: response.mark ?? document.myDataMark,
+        classificationMark: response.classificationMark,
+        uid: response.uid ?? document.myDataUid,
+        qrUrl: response.qrUrl ?? document.myDataQrUrl,
+        environment: response.environment ?? this.resolveAttemptEnvironment(this.aadeTestProvider),
+        attempt,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      const message =
+        error instanceof Error ? error.message : 'myDATA expense classification failed.';
+      return this.recordFailedTransmission(
+        document.id,
+        xml,
+        this.aadeTestProvider.providerName,
+        message,
+        'MYDATA_EXPENSE_CLASSIFICATION_EXCEPTION',
+        undefined,
+        {
+          environment: this.resolveAttemptEnvironment(this.aadeTestProvider),
+          correlationId,
+          forcedRetry: options.force === true,
+        },
+      );
+    }
+  }
+
+  async cancelTest(tenant: TenantContext, documentId: string) {
+    const document = await this.getTenantDocument(tenant, documentId);
+
+    if (!this.supportsSendInvoices(document.documentType)) {
+      throw new BadRequestException(
+        'AADE CancelInvoice is supported by this slice only for issued sales documents.',
+      );
+    }
+
+    if (document.myDataStatus === MyDataStatus.CANCELLED) {
+      throw new BadRequestException('Το παραστατικό είναι ήδη ακυρωμένο.');
+    }
+
+    if (document.myDataStatus !== MyDataStatus.SENT || !document.myDataMark) {
+      throw new BadRequestException(
+        'Για ακύρωση στην ΑΑΔΕ χρειάζεται ήδη σταλμένο παραστατικό με MARK.',
+      );
+    }
+
+    if (!this.aadeTestProvider.cancelInvoice) {
+      throw new BadRequestException(
+        'The configured myDATA provider does not support CancelInvoice.',
+      );
+    }
+
+    const correlationId = randomUUID();
+    const requestPayload = `CancelInvoice mark=${document.myDataMark}`;
+
+    try {
+      const response = await this.aadeTestProvider.cancelInvoice({
+        documentId: document.id,
+        mark: document.myDataMark,
+        entityVatNumber: this.resolveEntityVatNumberForThirdPartyCall(document.clientCompany),
+        credentialEnvPrefix: this.resolveCredentialEnvPrefix(
+          this.aadeTestProvider,
+          document.clientCompany,
+        ),
+      });
+
+      if (response.status === 'failed') {
+        return this.recordFailedActionAttempt(document.id, requestPayload, this.aadeTestProvider, {
+          message: response.errorMessage ?? 'AADE myDATA cancellation failed.',
+          code: response.errorCode ?? 'MYDATA_CANCEL_FAILED',
+          rawResponse: response.rawResponse,
+          environment: response.environment,
+          endpoint: response.endpoint,
+          correlationId,
+        });
+      }
+
+      await this.prisma.document.update({
+        where: { id: document.id },
+        data: {
+          myDataStatus: MyDataStatus.CANCELLED,
+          myDataCancellationMark: response.cancellationMark,
+          myDataCancelledAt: new Date(),
+        },
+      });
+
+      const attempt = await this.prisma.transmissionAttempt.create({
+        data: {
+          documentId: document.id,
+          provider: this.aadeTestProvider.providerName,
+          environment:
+            response.environment ?? this.resolveAttemptEnvironment(this.aadeTestProvider),
+          endpoint: response.endpoint,
+          correlationId,
+          status: TransmissionStatus.SENT,
+          requestPayload,
+          responsePayload: this.toResponsePayload(response),
+        },
+      });
+
+      return {
+        documentId: document.id,
+        status: MyDataStatus.CANCELLED,
+        mark: document.myDataMark,
+        cancellationMark: response.cancellationMark,
+        environment: response.environment ?? this.resolveAttemptEnvironment(this.aadeTestProvider),
+        attempt,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof BadGatewayException) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : 'myDATA cancellation failed.';
+      return this.recordFailedActionAttempt(document.id, requestPayload, this.aadeTestProvider, {
+        message,
+        code: 'MYDATA_CANCEL_EXCEPTION',
+        environment: this.resolveAttemptEnvironment(this.aadeTestProvider),
+        correlationId,
+      });
+    }
   }
 
   private async sendWithProvider(
@@ -188,7 +387,7 @@ export class MyDataService {
     options: MyDataSendOptions,
   ) {
     const document = await this.getTenantDocument(tenant, documentId);
-    this.ensureNotAlreadySent(document, options.force);
+    this.ensureSendAllowed(document, options.force);
     const xml = document.myDataXmlPreview ?? this.mappingService.mapDocumentToXml(document);
     const correlationId = randomUUID();
 
@@ -350,6 +549,10 @@ export class MyDataService {
     });
 
     const normalizedDocuments = this.normalizeAadeDocuments(response.rawResponse);
+    const normalizedCancellations = normalizeAadeCancellations(response.rawResponse);
+    const normalizedExpenseClassifications = normalizeAadeExpenseClassifications(
+      response.rawResponse,
+    );
     let matchedCount = 0;
     let mismatchCount = 0;
 
@@ -363,6 +566,16 @@ export class MyDataService {
 
       if (reconciliation.status === MyDataReconciliationStatus.MATCHED) {
         matchedCount += 1;
+        if (reconciliation.documentId) {
+          await this.prisma.document.update({
+            where: { id: reconciliation.documentId },
+            data: {
+              myDataMark: normalizedDocument.mark,
+              myDataUid: normalizedDocument.uid,
+              myDataQrUrl: normalizedDocument.qrUrl,
+            },
+          });
+        }
       } else {
         mismatchCount += 1;
       }
@@ -419,6 +632,45 @@ export class MyDataService {
       });
     }
 
+    let cancellationsApplied = 0;
+    for (const cancellation of normalizedCancellations) {
+      const result = await this.prisma.document.updateMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: clientCompany.id,
+          myDataMark: cancellation.invoiceMark,
+          deletedAt: null,
+        },
+        data: {
+          myDataStatus: MyDataStatus.CANCELLED,
+          myDataCancellationMark: cancellation.cancellationMark,
+          myDataCancelledAt: cancellation.cancellationDate,
+        },
+      });
+      cancellationsApplied += result.count;
+    }
+
+    let classificationsApplied = 0;
+    for (const classification of normalizedExpenseClassifications) {
+      if (!classification.classificationMark) {
+        continue;
+      }
+
+      const result = await this.prisma.document.updateMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: clientCompany.id,
+          myDataMark: classification.invoiceMark,
+          deletedAt: null,
+        },
+        data: {
+          myDataClassificationMark: classification.classificationMark,
+          classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+        },
+      });
+      classificationsApplied += result.count;
+    }
+
     const updatedRun = await this.prisma.myDataSyncRun.update({
       where: { id: syncRun.id },
       data: {
@@ -433,6 +685,10 @@ export class MyDataService {
       fetchedCount: normalizedDocuments.length,
       matchedCount,
       mismatchCount,
+      cancellationCount: normalizedCancellations.length,
+      cancellationsApplied,
+      expenseClassificationCount: normalizedExpenseClassifications.length,
+      classificationsApplied,
       nextPartitionKey: findFirstValue(response.rawResponse, ['nextPartitionKey']),
       nextRowKey: findFirstValue(response.rawResponse, ['nextRowKey']),
     };
@@ -492,6 +748,8 @@ export class MyDataService {
     const supportsSendInvoices = this.supportsSendInvoices(document.documentType);
     const supportsExpenseReceiver = document.documentType === DocumentType.PURCHASE_INVOICE;
     const alreadySent = document.myDataStatus === MyDataStatus.SENT;
+    const alreadyCancelled = document.myDataStatus === MyDataStatus.CANCELLED;
+    const failed = document.myDataStatus === MyDataStatus.FAILED;
     const configuration = this.describeClientConfiguration(document.clientCompany);
     const blockers: string[] = [];
 
@@ -504,7 +762,19 @@ export class MyDataService {
     }
 
     if (alreadySent) {
-      blockers.push('Το παραστατικό έχει ήδη διαβιβαστεί. Νέα αποστολή χρειάζεται forced retry.');
+      blockers.push(
+        'Το παραστατικό έχει ήδη διαβιβαστεί. Χρειάζεται ακύρωση ή διορθωτικό παραστατικό, όχι επαναποστολή.',
+      );
+    }
+
+    if (alreadyCancelled) {
+      blockers.push('Το παραστατικό έχει ακυρωθεί στο myDATA.');
+    }
+
+    if (supportsExpenseReceiver && !document.myDataMark) {
+      blockers.push(
+        'Για χαρακτηρισμό εξόδου χρειάζεται πρώτα MARK από RequestDocs reconciliation.',
+      );
     }
 
     return {
@@ -516,12 +786,43 @@ export class MyDataService {
           : 'unsupported',
       status: document.myDataStatus,
       mark: document.myDataMark,
-      canPrepare: (supportsSendInvoices || supportsExpenseReceiver) && !alreadySent,
-      canSendMock: supportsSendInvoices && !alreadySent,
-      canSendAade: supportsSendInvoices && configuration.canUseApi && !alreadySent,
-      canForceResend: supportsSendInvoices && alreadySent && configuration.canUseApi,
-      canPrepareExpense: supportsExpenseReceiver && !alreadySent,
-      canSendExpenseMock: supportsExpenseReceiver && !alreadySent,
+      canPrepare:
+        (supportsSendInvoices || supportsExpenseReceiver) && !alreadySent && !alreadyCancelled,
+      canSendMock: supportsSendInvoices && !alreadySent && !alreadyCancelled,
+      canSendAade:
+        supportsSendInvoices &&
+        configuration.canUseApi &&
+        !alreadySent &&
+        !alreadyCancelled &&
+        !failed,
+      canForceResend: supportsSendInvoices && failed && configuration.canUseApi,
+      canCancelAade:
+        supportsSendInvoices &&
+        configuration.canUseApi &&
+        document.myDataStatus === MyDataStatus.SENT &&
+        Boolean(document.myDataMark),
+      canPrepareExpense:
+        supportsExpenseReceiver &&
+        !alreadySent &&
+        !alreadyCancelled &&
+        Boolean(document.myDataMark),
+      canSendExpenseMock:
+        supportsExpenseReceiver &&
+        !alreadySent &&
+        !alreadyCancelled &&
+        Boolean(document.myDataMark),
+      canSendExpenseAade:
+        supportsExpenseReceiver &&
+        configuration.canUseApi &&
+        !alreadySent &&
+        !alreadyCancelled &&
+        !failed &&
+        Boolean(document.myDataMark),
+      canForceExpenseResend:
+        supportsExpenseReceiver &&
+        configuration.canUseApi &&
+        failed &&
+        Boolean(document.myDataMark),
       configuration,
       blockers,
     };
@@ -571,6 +872,42 @@ export class MyDataService {
     });
 
     throw new BadGatewayException(message);
+  }
+
+  private async recordFailedActionAttempt(
+    documentId: string,
+    requestPayload: string,
+    provider: MyDataProvider,
+    metadata: {
+      message: string;
+      code: string;
+      rawResponse?: unknown;
+      environment?: string;
+      endpoint?: string;
+      correlationId?: string;
+    },
+  ): Promise<never> {
+    await this.prisma.transmissionAttempt.create({
+      data: {
+        documentId,
+        provider: provider.providerName,
+        environment: metadata.environment,
+        endpoint: metadata.endpoint,
+        correlationId: metadata.correlationId,
+        status: TransmissionStatus.FAILED,
+        requestPayload,
+        errorCode: metadata.code,
+        errorMessage: metadata.message,
+        responsePayload: {
+          status: 'failed',
+          errorCode: metadata.code,
+          errorMessage: metadata.message,
+          rawResponse: this.toJsonValue(metadata.rawResponse),
+        },
+      },
+    });
+
+    throw new BadGatewayException(metadata.message);
   }
 
   private async getTenantDocument(tenant: TenantContext, documentId: string) {
@@ -666,6 +1003,8 @@ export class MyDataService {
       endpoint: response.endpoint ?? null,
       httpStatus: response.httpStatus ?? null,
       mark: response.mark ?? null,
+      classificationMark: response.classificationMark ?? null,
+      cancellationMark: response.cancellationMark ?? null,
       uid: response.uid ?? null,
       qrUrl: response.qrUrl ?? null,
       errorCode: response.errorCode ?? null,
@@ -755,7 +1094,10 @@ export class MyDataService {
       issues.push('issueDate');
     }
 
-    if (aadeDocument.totalAmount && decimalDiffers(document.totalAmount, aadeDocument.totalAmount)) {
+    if (
+      aadeDocument.totalAmount &&
+      decimalDiffers(document.totalAmount, aadeDocument.totalAmount)
+    ) {
       issues.push('totalAmount');
     }
 
@@ -835,14 +1177,35 @@ export class MyDataService {
     });
   }
 
-  private ensureNotAlreadySent(
+  private ensureNotAlreadySent(document: {
+    myDataStatus: MyDataStatus;
+    myDataMark?: string | null;
+  }): void {
+    if (document.myDataStatus === MyDataStatus.SENT) {
+      throw new BadRequestException(
+        'Το παραστατικό έχει ήδη διαβιβαστεί στο myDATA και δεν επιτρέπεται διπλή αποστολή. Χρησιμοποίησε ακύρωση ή διορθωτικό παραστατικό.',
+      );
+    }
+
+    if (document.myDataStatus === MyDataStatus.CANCELLED) {
+      throw new BadRequestException('Το παραστατικό έχει ακυρωθεί στο myDATA.');
+    }
+  }
+
+  private ensureSendAllowed(
     document: { myDataStatus: MyDataStatus; myDataMark?: string | null },
     force = false,
   ): void {
-    if (document.myDataStatus === MyDataStatus.SENT && !force) {
+    this.ensureNotAlreadySent(document);
+
+    if (document.myDataStatus === MyDataStatus.FAILED && !force) {
       throw new BadRequestException(
-        'Το παραστατικό έχει ήδη διαβιβαστεί στο myDATA. Για νέα αποστολή απαιτείται forced retry ώστε να καταγραφεί ρητά στο ιστορικό.',
+        'Η προηγούμενη αποστολή απέτυχε. Απαιτείται ρητή εντολή retry ώστε να καταγραφεί στο ιστορικό.',
       );
+    }
+
+    if (document.myDataStatus !== MyDataStatus.FAILED && force) {
+      throw new BadRequestException('Forced retry επιτρέπεται μόνο μετά από αποτυχημένη αποστολή.');
     }
   }
 
@@ -866,6 +1229,14 @@ export class MyDataService {
     }
 
     return 'unknown';
+  }
+
+  private resolveEntityVatNumberForThirdPartyCall(
+    clientCompany: ClientCompany,
+  ): string | undefined {
+    return clientCompany.myDataMode === MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED
+      ? clientCompany.vatNumber
+      : undefined;
   }
 
   private describeClientConfiguration(clientCompany: ClientCompany): {
@@ -915,18 +1286,22 @@ export class MyDataService {
 }
 
 function collectInvoicePayloads(value: unknown): unknown[] {
-  const invoices: unknown[] = [];
-  collectInvoicePayloadsInto(value, invoices);
-  return invoices;
+  return collectNamedPayloads(value, 'invoice');
 }
 
-function collectInvoicePayloadsInto(value: unknown, invoices: unknown[]): void {
+function collectNamedPayloads(value: unknown, elementName: string): unknown[] {
+  const payloads: unknown[] = [];
+  collectNamedPayloadsInto(value, elementName.toLowerCase(), payloads);
+  return payloads;
+}
+
+function collectNamedPayloadsInto(value: unknown, elementName: string, payloads: unknown[]): void {
   if (value === null || value === undefined) {
     return;
   }
 
   if (Array.isArray(value)) {
-    value.forEach((entry) => collectInvoicePayloadsInto(entry, invoices));
+    value.forEach((entry) => collectNamedPayloadsInto(entry, elementName, payloads));
     return;
   }
 
@@ -935,17 +1310,58 @@ function collectInvoicePayloadsInto(value: unknown, invoices: unknown[]): void {
   }
 
   for (const [key, entryValue] of Object.entries(value)) {
-    if (key.toLowerCase() === 'invoice') {
+    if (key.toLowerCase() === elementName) {
       if (Array.isArray(entryValue)) {
-        invoices.push(...entryValue);
+        payloads.push(...entryValue);
       } else if (entryValue !== null && entryValue !== undefined) {
-        invoices.push(entryValue);
+        payloads.push(entryValue);
       }
       continue;
     }
 
-    collectInvoicePayloadsInto(entryValue, invoices);
+    collectNamedPayloadsInto(entryValue, elementName, payloads);
   }
+}
+
+function normalizeAadeCancellations(rawResponse: unknown): Array<{
+  invoiceMark: string;
+  cancellationMark: string;
+  cancellationDate?: Date;
+}> {
+  return collectNamedPayloads(rawResponse, 'cancelledInvoice').flatMap((payload) => {
+    const invoiceMark = findFirstValue(payload, ['invoiceMark']);
+    const cancellationMark = findFirstValue(payload, ['cancellationMark']);
+    if (!invoiceMark || !cancellationMark) {
+      return [];
+    }
+
+    return [
+      {
+        invoiceMark,
+        cancellationMark,
+        cancellationDate: parseAadeDate(findFirstValue(payload, ['cancellationDate'])),
+      },
+    ];
+  });
+}
+
+function normalizeAadeExpenseClassifications(rawResponse: unknown): Array<{
+  invoiceMark: string;
+  classificationMark?: string;
+}> {
+  return collectNamedPayloads(rawResponse, 'expensesInvoiceClassification').flatMap((payload) => {
+    const invoiceMark = findFirstValue(payload, ['invoiceMark']);
+    if (!invoiceMark) {
+      return [];
+    }
+
+    return [
+      {
+        invoiceMark,
+        classificationMark: findFirstValue(payload, ['classificationMark']),
+      },
+    ];
+  });
 }
 
 function findObjectValue(value: unknown, key: string): unknown {

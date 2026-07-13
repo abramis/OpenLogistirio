@@ -109,6 +109,40 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
           </select>
         </label>
 
+        <label class="field" *ngIf="form.controls.vatCategory.value === 'VAT_0'">
+          <span class="field-label">Αιτία απαλλαγής ΦΠΑ <span class="req">*</span></span>
+          <select formControlName="vatExemptionCategory">
+            <option [ngValue]="0">Επιλέξτε κωδικό ΑΑΔΕ…</option>
+            <option *ngFor="let category of vatExemptionCategories" [ngValue]="category">
+              {{ category }}
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Τρόπος πληρωμής</span>
+          <select formControlName="paymentMethodType">
+            <option [ngValue]="1">1 — Επαγγ. λογαριασμός ημεδαπής</option>
+            <option [ngValue]="2">2 — Επαγγ. λογαριασμός αλλοδαπής</option>
+            <option [ngValue]="3">3 — Μετρητά</option>
+            <option [ngValue]="4">4 — Επιταγή</option>
+            <option [ngValue]="5">5 — Επί πιστώσει</option>
+            <option [ngValue]="6">6 — Web Banking</option>
+            <option [ngValue]="7">7 — POS / e-POS</option>
+            <option [ngValue]="8">8 — Άμεση πληρωμή IRIS</option>
+          </select>
+        </label>
+
+        <label class="field wide" *ngIf="form.controls.documentType.value === 'CREDIT_NOTE'">
+          <span class="field-label">MARK αρχικού παραστατικού</span>
+          <input
+            formControlName="correlatedInvoiceMark"
+            inputmode="numeric"
+            placeholder="Κενό = μη συσχετιζόμενο πιστωτικό 5.2"
+          />
+          <small>Με MARK αποστέλλεται ως 5.1, χωρίς MARK ως 5.2.</small>
+        </label>
+
         <label class="field">
           <span class="field-label">Master data αντισυμβαλλόμενου</span>
           <select formControlName="counterpartyId">
@@ -179,9 +213,53 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
             </button>
           </div>
         </div>
+
+        <div class="taxes-section">
+          <h2>Φόροι και κρατήσεις myDATA</h2>
+          <p>Η κατηγορία είναι υποχρεωτική όταν υπάρχει αντίστοιχο ποσό.</p>
+          <div class="taxes-grid">
+            <label class="field">
+              <span class="field-label">Παρακράτηση (€)</span>
+              <input formControlName="withheldAmount" type="number" min="0" step="0.01" />
+            </label>
+            <label class="field">
+              <span class="field-label">Κατηγορία παρακράτησης (1–18)</span>
+              <input formControlName="withheldCategory" type="number" min="1" max="18" />
+            </label>
+            <label class="field">
+              <span class="field-label">Τέλη (€)</span>
+              <input formControlName="feesAmount" type="number" min="0" step="0.01" />
+            </label>
+            <label class="field">
+              <span class="field-label">Κατηγορία τελών (1–22)</span>
+              <input formControlName="feesCategory" type="number" min="1" max="22" />
+            </label>
+            <label class="field">
+              <span class="field-label">Ψηφιακό τέλος συναλλαγής (€)</span>
+              <input formControlName="stampDutyAmount" type="number" min="0" step="0.01" />
+            </label>
+            <label class="field">
+              <span class="field-label">Κατηγορία ψηφιακού τέλους (1–4)</span>
+              <input formControlName="stampDutyCategory" type="number" min="1" max="4" />
+            </label>
+            <label class="field">
+              <span class="field-label">Λοιποί φόροι (€)</span>
+              <input formControlName="otherTaxesAmount" type="number" min="0" step="0.01" />
+            </label>
+            <label class="field">
+              <span class="field-label">Κατηγορία λοιπών φόρων (1–30)</span>
+              <input formControlName="otherTaxesCategory" type="number" min="1" max="30" />
+            </label>
+            <label class="field">
+              <span class="field-label">Κρατήσεις / αφαιρέσεις (€)</span>
+              <input formControlName="deductionsAmount" type="number" min="0" step="0.01" />
+            </label>
+          </div>
+        </div>
       </div>
 
       <div class="form-footer">
+        <span class="form-submit-error" *ngIf="formMessage">{{ formMessage }}</span>
         <button type="submit" class="btn btn-primary">
           <span class="material-symbols-outlined">add_circle</span>
           Δημιουργία παραστατικού
@@ -243,6 +321,27 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         grid-column: 1 / -1;
       }
 
+      .taxes-section {
+        grid-column: 1 / -1;
+        padding-top: 8px;
+        border-top: 1px solid var(--border);
+      }
+      .taxes-section h2 {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+      .taxes-section p,
+      .field small {
+        margin: 3px 0 10px;
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+      .taxes-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px 20px;
+      }
+
       .counterparty-actions {
         grid-column: 1 / -1;
         display: flex;
@@ -288,6 +387,14 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         padding: 14px 20px 18px;
         border-top: 1px solid var(--border);
         margin-top: 16px;
+        gap: 14px;
+        align-items: center;
+      }
+      .form-submit-error {
+        margin-right: auto;
+        color: var(--err);
+        font-size: 0.78rem;
+        font-weight: 600;
       }
 
       @media (max-width: 720px) {
@@ -295,6 +402,9 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
           grid-template-columns: 1fr;
         }
         .amounts-row {
+          grid-template-columns: 1fr;
+        }
+        .taxes-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -322,10 +432,24 @@ export class DocumentFormPageComponent implements OnInit {
     counterpartyName: [''],
     counterpartyVatNumber: [''],
     vatCategory: ['VAT_24', Validators.required],
+    paymentMethodType: [3, [Validators.required, Validators.min(1), Validators.max(8)]],
+    vatExemptionCategory: [0],
+    correlatedInvoiceMark: [''],
     netAmount: [100, [Validators.required, Validators.min(0)]],
     vatAmount: [24, [Validators.required, Validators.min(0)]],
     totalAmount: [124, [Validators.required, Validators.min(0)]],
+    withheldAmount: [0, Validators.min(0)],
+    withheldCategory: [''],
+    feesAmount: [0, Validators.min(0)],
+    feesCategory: [''],
+    stampDutyAmount: [0, Validators.min(0)],
+    stampDutyCategory: [''],
+    otherTaxesAmount: [0, Validators.min(0)],
+    otherTaxesCategory: [''],
+    deductionsAmount: [0, Validators.min(0)],
   });
+
+  readonly vatExemptionCategories = Array.from({ length: 31 }, (_, index) => index + 1);
 
   ngOnInit(): void {
     this.form.controls.issueDate.setValue(new Date().toISOString().slice(0, 10));
@@ -338,7 +462,26 @@ export class DocumentFormPageComponent implements OnInit {
       this.loadSetupOptions(clientCompanyId);
       this.loadCounterparties(clientCompanyId);
     });
-    this.form.controls.documentType.valueChanges.subscribe(() => this.applyDefaultSetupOptions());
+    this.form.controls.documentType.valueChanges.subscribe((documentType) => {
+      this.applyDefaultSetupOptions();
+      if (documentType !== 'CREDIT_NOTE') {
+        this.form.controls.correlatedInvoiceMark.setValue('');
+      }
+    });
+    this.form.controls.vatCategory.valueChanges.subscribe((vatCategory) => {
+      if (vatCategory !== 'VAT_0') {
+        this.form.controls.vatExemptionCategory.setValue(0);
+      }
+    });
+    [
+      this.form.controls.netAmount,
+      this.form.controls.vatAmount,
+      this.form.controls.withheldAmount,
+      this.form.controls.feesAmount,
+      this.form.controls.stampDutyAmount,
+      this.form.controls.otherTaxesAmount,
+      this.form.controls.deductionsAmount,
+    ].forEach((control) => control.valueChanges.subscribe(() => this.recalculateTotal()));
     this.form.controls.counterpartyId.valueChanges.subscribe((counterpartyId) => {
       this.applyCounterparty(counterpartyId);
     });
@@ -349,6 +492,7 @@ export class DocumentFormPageComponent implements OnInit {
   vatSetupOptions: ClientSetupItem[] = [];
   counterpartyOptions: Counterparty[] = [];
   counterpartyMessage = '';
+  formMessage = '';
 
   showError(controlName: keyof typeof this.form.controls, errorName: string): boolean {
     const control = this.form.controls[controlName];
@@ -361,13 +505,19 @@ export class DocumentFormPageComponent implements OnInit {
     this.form.patchValue({
       vatCategory,
       vatAmount: vat,
-      totalAmount: roundMoney(net + vat),
     });
+    this.recalculateTotal();
   }
 
   submit(): void {
+    this.formMessage = this.conditionalValidationMessage();
+    if (this.formMessage) {
+      return;
+    }
+
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.formMessage = 'Έλεγξε τα υποχρεωτικά πεδία και τα επιτρεπτά όρια.';
       return;
     }
 
@@ -387,6 +537,18 @@ export class DocumentFormPageComponent implements OnInit {
         vatAmount: value.vatAmount,
         totalAmount: value.totalAmount,
         vatCategory: value.vatCategory,
+        paymentMethodType: value.paymentMethodType,
+        vatExemptionCategory: positiveOrUndefined(value.vatExemptionCategory),
+        correlatedInvoiceMark: emptyToUndefined(value.correlatedInvoiceMark),
+        withheldAmount: value.withheldAmount,
+        withheldCategory: positiveOrUndefined(value.withheldCategory),
+        feesAmount: value.feesAmount,
+        feesCategory: positiveOrUndefined(value.feesCategory),
+        stampDutyAmount: value.stampDutyAmount,
+        stampDutyCategory: positiveOrUndefined(value.stampDutyCategory),
+        otherTaxesAmount: value.otherTaxesAmount,
+        otherTaxesCategory: positiveOrUndefined(value.otherTaxesCategory),
+        deductionsAmount: value.deductionsAmount,
       })
       .subscribe(() => {
         void this.router.navigate(['/documents']);
@@ -495,6 +657,49 @@ export class DocumentFormPageComponent implements OnInit {
   vatCategoryCode(item: ClientSetupItem): string {
     return `VAT_${this.vatRate(item)}`;
   }
+
+  private recalculateTotal(): void {
+    const value = this.form.getRawValue();
+    this.form.controls.totalAmount.setValue(
+      roundMoney(
+        Number(value.netAmount) +
+          Number(value.vatAmount) -
+          Number(value.withheldAmount) +
+          Number(value.feesAmount) +
+          Number(value.stampDutyAmount) +
+          Number(value.otherTaxesAmount) -
+          Number(value.deductionsAmount),
+      ),
+      { emitEvent: false },
+    );
+  }
+
+  private conditionalValidationMessage(): string {
+    const value = this.form.getRawValue();
+    if (value.vatCategory === 'VAT_0' && Number(value.vatExemptionCategory) <= 0) {
+      return 'Επίλεξε αιτία απαλλαγής για συντελεστή ΦΠΑ 0%.';
+    }
+
+    const categorizedTaxes: Array<[string, number, number | string]> = [
+      ['παρακράτησης', value.withheldAmount, value.withheldCategory],
+      ['τελών', value.feesAmount, value.feesCategory],
+      ['ψηφιακού τέλους', value.stampDutyAmount, value.stampDutyCategory],
+      ['λοιπών φόρων', value.otherTaxesAmount, value.otherTaxesCategory],
+    ];
+    const missingCategory = categorizedTaxes.find(
+      ([, amount, category]) => Number(amount) > 0 && Number(category) <= 0,
+    );
+    if (missingCategory) {
+      return `Συμπλήρωσε κατηγορία ${missingCategory[0]}.`;
+    }
+
+    const correlationMark = value.correlatedInvoiceMark.trim();
+    if (correlationMark && !/^\d+$/.test(correlationMark)) {
+      return 'Το συσχετιζόμενο MARK πρέπει να περιέχει μόνο ψηφία.';
+    }
+
+    return '';
+  }
 }
 
 function roundMoney(value: number): number {
@@ -504,6 +709,10 @@ function roundMoney(value: number): number {
 function emptyToUndefined(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function positiveOrUndefined(value: number | string): number | undefined {
+  return Number(value) > 0 ? Number(value) : undefined;
 }
 
 function defaultMovementCode(documentType: string): string {

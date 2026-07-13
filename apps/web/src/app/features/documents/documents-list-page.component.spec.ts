@@ -52,6 +52,36 @@ describe('DocumentsListPageComponent', () => {
         mark: 'AADE-TEST-MARK',
       }),
     ),
+    cancelTestMyData: jasmine.createSpy('cancelTestMyData').and.returnValue(
+      of({
+        documentId: 'document-1',
+        status: 'CANCELLED',
+        mark: '4000012345',
+        cancellationMark: '7000012345',
+      }),
+    ),
+    prepareExpenseMyData: jasmine.createSpy('prepareExpenseMyData').and.returnValue(
+      of({
+        documentId: 'document-1',
+        status: 'READY_TO_SEND',
+        xml: '<ExpensesClassificationsDoc />',
+      }),
+    ),
+    sendExpenseMockMyData: jasmine.createSpy('sendExpenseMockMyData').and.returnValue(
+      of({
+        documentId: 'document-1',
+        status: 'SENT',
+        mark: 'MOCK-EXPENSE-MARK-document-1',
+      }),
+    ),
+    sendExpenseTestMyData: jasmine.createSpy('sendExpenseTestMyData').and.returnValue(
+      of({
+        documentId: 'document-1',
+        status: 'SENT',
+        mark: '4000012345',
+        classificationMark: '9000012345',
+      }),
+    ),
     getMyDataHistory: jasmine.createSpy('getMyDataHistory').and.returnValue(of([])),
   };
 
@@ -139,5 +169,57 @@ describe('DocumentsListPageComponent', () => {
     });
 
     expect(documentsApi.sendTestMyData).toHaveBeenCalledWith('document-1');
+  });
+
+  it('sends purchase expense classification to the AADE test environment', () => {
+    fixture.componentInstance.sendExpenseTest({
+      id: 'document-2',
+      documentType: 'PURCHASE_INVOICE',
+      documentNumber: '15',
+      issueDate: '2026-07-03T00:00:00.000Z',
+      netAmount: '350.00',
+      vatAmount: '84.00',
+      totalAmount: '434.00',
+      vatCategory: 'VAT_24',
+      movementCode: 'PURCHASE_INVOICE',
+      journalCode: 'PURCHASES',
+      myDataStatus: 'DRAFT',
+      myDataMark: '4000012345',
+      clientCompany: {
+        id: 'company-1',
+        legalName: 'Demo Company',
+        vatNumber: '123456789',
+        myDataMode: 'ACCOUNTING_OFFICE_AUTHORIZED',
+        myDataAuthorized: true,
+      },
+    });
+
+    expect(documentsApi.sendExpenseTestMyData).toHaveBeenCalledWith('document-2');
+  });
+
+  it('cancels a sent issued document in the AADE test environment', () => {
+    fixture.componentInstance.cancelTest({
+      id: 'document-3',
+      documentType: 'SALES_INVOICE',
+      documentNumber: '16',
+      issueDate: '2026-07-04T00:00:00.000Z',
+      netAmount: '100.00',
+      vatAmount: '24.00',
+      totalAmount: '124.00',
+      vatCategory: 'VAT_24',
+      movementCode: 'SALE_INVOICE',
+      journalCode: 'SALES',
+      myDataStatus: 'SENT',
+      myDataMark: '4000012345',
+      clientCompany: {
+        id: 'company-1',
+        legalName: 'Demo Company',
+        vatNumber: '123456789',
+        myDataMode: 'ACCOUNTING_OFFICE_AUTHORIZED',
+        myDataAuthorized: true,
+      },
+    });
+
+    expect(documentsApi.cancelTestMyData).toHaveBeenCalledWith('document-3');
   });
 });

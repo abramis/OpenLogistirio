@@ -16,6 +16,7 @@ describe('DeclarationsService', () => {
           id: 'company-1',
           accountingOfficeId: 'office-1',
           legalName: 'Demo Company',
+          vatNumber: '123456789',
         }),
       },
       document: {
@@ -46,6 +47,26 @@ describe('DeclarationsService', () => {
             vatAmount: 4.8,
             totalAmount: 24.8,
             myDataStatus: 'SENT',
+          },
+        ]),
+      },
+      myDataSnapshot: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            mark: '1',
+            issuerVatNumber: '123456789',
+            invoiceType: '1.1',
+            netAmount: 80,
+            vatAmount: 19.2,
+            reconciliationStatus: 'MATCHED',
+          },
+          {
+            mark: '2',
+            issuerVatNumber: '987654321',
+            invoiceType: '1.1',
+            netAmount: 50,
+            vatAmount: 12,
+            reconciliationStatus: 'MATCHED',
           },
         ]),
       },
@@ -97,6 +118,18 @@ describe('DeclarationsService', () => {
             documents: 1,
           }),
         ]),
+      }),
+    );
+    expect(result.totals).toEqual(
+      expect.objectContaining({
+        myDataReconciliation: expect.objectContaining({
+          snapshotCount: 2,
+          mismatches: 0,
+          salesNetDelta: 0,
+          salesVatDelta: 0,
+          purchasesNetDelta: 0,
+          purchasesVatDelta: 0,
+        }),
       }),
     );
   });
