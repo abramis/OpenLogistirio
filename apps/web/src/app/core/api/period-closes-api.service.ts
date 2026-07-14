@@ -10,6 +10,13 @@ export interface PeriodCloseCheck {
   automatic: boolean;
   blocking: boolean;
   details: string;
+  note?: string;
+  attachments?: PeriodCloseCheckAttachment[];
+}
+
+export interface PeriodCloseCheckAttachment {
+  name: string;
+  url: string;
 }
 
 export interface PeriodCloseReview {
@@ -40,6 +47,8 @@ export interface PeriodCloseReview {
   rejectionReason?: string | null;
   submittedAt?: string | null;
   approvedAt?: string | null;
+  reopenedAt?: string | null;
+  reopenReason?: string | null;
   clientCompany?: { id: string; legalName: string; vatNumber: string };
   preparedBy?: { id: string; fullName: string } | null;
   approvedBy?: { id: string; fullName: string } | null;
@@ -65,7 +74,12 @@ export class PeriodClosesApiService {
 
   updateChecklist(
     id: string,
-    payload: { code: string; completed: boolean },
+    payload: {
+      code: string;
+      completed: boolean;
+      note?: string;
+      attachments?: PeriodCloseCheckAttachment[];
+    },
   ): Observable<PeriodCloseReview> {
     return this.http.patch<PeriodCloseReview>(`${this.baseUrl}/${id}/checklist`, payload, {});
   }
@@ -80,5 +94,9 @@ export class PeriodClosesApiService {
 
   reject(id: string, reason: string): Observable<PeriodCloseReview> {
     return this.http.post<PeriodCloseReview>(`${this.baseUrl}/${id}/reject`, { reason }, {});
+  }
+
+  reopen(id: string, reason: string): Observable<PeriodCloseReview> {
+    return this.http.post<PeriodCloseReview>(`${this.baseUrl}/${id}/reopen`, { reason }, {});
   }
 }

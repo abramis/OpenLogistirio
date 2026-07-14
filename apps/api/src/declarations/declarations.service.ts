@@ -1,17 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   DeclarationWorkpaperStatus,
+  DeclarationWorkpaperPeriodKind,
   DeclarationWorkpaperType,
   DocumentType,
+  PeriodCloseKind,
   Prisma,
 } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { GenerateVatWorkpaperDto } from './dto/generate-vat-workpaper.dto';
+import { SubmitDeclarationWorkpaperDto } from './dto/submit-declaration-workpaper.dto';
 
 @Injectable()
 export class DeclarationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   findWorkpapers(tenant: TenantContext, clientCompanyId?: string) {
     return this.prisma.declarationWorkpaper.findMany({
@@ -24,7 +31,7 @@ export class DeclarationsService {
           select: { id: true, legalName: true, vatNumber: true },
         },
       },
-      orderBy: [{ periodYear: 'desc' }, { periodMonth: 'desc' }, { generatedAt: 'desc' }],
+      orderBy: [{ periodYear: 'desc' }, { periodEndMonth: 'desc' }, { generatedAt: 'desc' }],
     });
   }
 
@@ -41,7 +48,8 @@ export class DeclarationsService {
       throw new NotFoundException('Client company was not found.');
     }
 
-    const dateFilter = toPeriodDateFilter(dto.year, dto.month);
+    const period = resolveWorkpaperPeriod(dto);
+    const dateFilter = toPeriodDateFilter(dto.year, period.startMonth, period.endMonth);
     const [documents, snapshots] = await Promise.all([
       this.prisma.document.findMany({
         where: {
@@ -61,16 +69,15 @@ export class DeclarationsService {
       }),
     ]);
     const totals = toVatTotals(documents, snapshots, company.vatNumber);
-    const title = dto.month
-      ? `Workpaper ΦΠΑ ${String(dto.month).padStart(2, '0')}/${dto.year}`
-      : `Workpaper ΦΠΑ ${dto.year}`;
+    const title = workpaperTitle(dto.year, period);
 
     const existing = await this.prisma.declarationWorkpaper.findFirst({
       where: {
         clientCompanyId: dto.clientCompanyId,
         type: DeclarationWorkpaperType.VAT_RETURN,
         periodYear: dto.year,
-        periodMonth: dto.month ?? null,
+        periodKind: period.kind,
+        periodEndMonth: period.endMonth,
       },
     });
 
@@ -83,8 +90,16 @@ export class DeclarationsService {
           status: DeclarationWorkpaperStatus.DRAFT,
           generatedAt: new Date(),
           submittedAt: null,
+          submissionReference: null,
+          submissionDate: null,
+          submissionAttachments: Prisma.JsonNull,
           approvedById: null,
           approvedAt: null,
+          periodStartMonth: period.startMonth,
+          periodEndMonth: period.endMonth,
+          periodMonth:
+            period.kind === DeclarationWorkpaperPeriodKind.ANNUAL ? null : period.endMonth,
+          periodCloseReviewId: null,
         },
       });
     }
@@ -96,7 +111,10 @@ export class DeclarationsService {
         type: DeclarationWorkpaperType.VAT_RETURN,
         title,
         periodYear: dto.year,
-        periodMonth: dto.month,
+        periodMonth: period.kind === DeclarationWorkpaperPeriodKind.ANNUAL ? null : period.endMonth,
+        periodKind: period.kind,
+        periodStartMonth: period.startMonth,
+        periodEndMonth: period.endMonth,
         totals,
       },
     });
@@ -118,7 +136,7 @@ export class DeclarationsService {
     if (workpaper.status !== DeclarationWorkpaperStatus.READY) {
       throw new BadRequestException('Mark the workpaper ready before accountant approval.');
     }
-    if (!workpaper.periodMonth) {
+    if (workpaper.periodKind === DeclarationWorkpaperPeriodKind.ANNUAL) {
       throw new BadRequestException('Approval currently requires a monthly or quarterly period.');
     }
     const approvedClose = await this.prisma.periodCloseReview.findFirst({
@@ -126,9 +144,13 @@ export class DeclarationsService {
         accountingOfficeId: tenant.accountingOfficeId,
         clientCompanyId: workpaper.clientCompanyId,
         periodYear: workpaper.periodYear,
+        kind:
+          workpaper.periodKind === DeclarationWorkpaperPeriodKind.QUARTERLY
+            ? PeriodCloseKind.QUARTERLY
+            : PeriodCloseKind.MONTHLY,
         status: 'APPROVED',
-        startMonth: { lte: workpaper.periodMonth },
-        endMonth: { gte: workpaper.periodMonth },
+        startMonth: { lte: workpaper.periodStartMonth },
+        endMonth: { gte: workpaper.periodEndMonth },
       },
       select: { id: true },
     });
@@ -138,13 +160,84 @@ export class DeclarationsService {
       );
     }
 
-    return this.prisma.declarationWorkpaper.update({
+    const updated = await this.prisma.declarationWorkpaper.update({
       where: { id: workpaper.id },
       data: {
         status: DeclarationWorkpaperStatus.APPROVED,
         approvedById: await this.resolveTenantUserId(tenant),
         approvedAt: new Date(),
+        periodCloseReviewId: approvedClose.id,
       },
+    });
+    await this.recordAudit(tenant, workpaper.id, 'DECLARATION_WORKPAPER_APPROVED', {
+      periodCloseReviewId: approvedClose.id,
+    });
+    return updated;
+  }
+
+  async submit(tenant: TenantContext, id: string, dto: SubmitDeclarationWorkpaperDto) {
+    const workpaper = await this.getTenantWorkpaper(tenant, id);
+    if (workpaper.status !== DeclarationWorkpaperStatus.APPROVED) {
+      throw new BadRequestException('Only an approved workpaper can be recorded as submitted.');
+    }
+    const submissionDate = new Date(dto.submissionDate);
+    if (Number.isNaN(submissionDate.getTime())) {
+      throw new BadRequestException('Submission date is invalid.');
+    }
+
+    const attachments = dto.attachments?.map((attachment) => ({
+      name: attachment.name.trim(),
+      url: attachment.url.trim(),
+    }));
+    const updated = await this.prisma.declarationWorkpaper.update({
+      where: { id: workpaper.id },
+      data: {
+        status: DeclarationWorkpaperStatus.SUBMITTED,
+        submittedAt: new Date(),
+        submissionReference: dto.submissionReference.trim(),
+        submissionDate,
+        submissionAttachments:
+          attachments === undefined
+            ? Prisma.JsonNull
+            : (attachments as unknown as Prisma.InputJsonValue),
+        notes: dto.notes === undefined ? undefined : dto.notes.trim() || null,
+      },
+    });
+    await this.recordAudit(tenant, workpaper.id, 'DECLARATION_WORKPAPER_SUBMITTED', {
+      submissionReference: updated.submissionReference,
+      submissionDate: updated.submissionDate,
+      attachmentCount: attachments?.length ?? 0,
+    });
+    return updated;
+  }
+
+  async archive(tenant: TenantContext, id: string) {
+    const workpaper = await this.getTenantWorkpaper(tenant, id);
+    if (workpaper.status !== DeclarationWorkpaperStatus.SUBMITTED) {
+      throw new BadRequestException('Only a submitted workpaper can be archived.');
+    }
+    const updated = await this.prisma.declarationWorkpaper.update({
+      where: { id: workpaper.id },
+      data: { status: DeclarationWorkpaperStatus.ARCHIVED },
+    });
+    await this.recordAudit(tenant, workpaper.id, 'DECLARATION_WORKPAPER_ARCHIVED', {
+      submissionReference: workpaper.submissionReference,
+    });
+    return updated;
+  }
+
+  private async recordAudit(
+    tenant: TenantContext,
+    entityId: string,
+    event: string,
+    details: object,
+  ) {
+    await this.audit.record({
+      tenant,
+      action: 'UPDATE',
+      entityType: 'DeclarationWorkpaper',
+      entityId,
+      newValue: { event, ...details } as Prisma.InputJsonValue,
     });
   }
 
@@ -170,18 +263,50 @@ export class DeclarationsService {
   }
 }
 
-function toPeriodDateFilter(year: number, month?: number): Prisma.DateTimeFilter {
-  if (month) {
-    return {
-      gte: new Date(Date.UTC(year, month - 1, 1)),
-      lt: new Date(Date.UTC(year, month, 1)),
-    };
-  }
-
+function toPeriodDateFilter(
+  year: number,
+  startMonth: number,
+  endMonth: number,
+): Prisma.DateTimeFilter {
   return {
-    gte: new Date(Date.UTC(year, 0, 1)),
-    lt: new Date(Date.UTC(year + 1, 0, 1)),
+    gte: new Date(Date.UTC(year, startMonth - 1, 1)),
+    lt: new Date(Date.UTC(year, endMonth, 1)),
   };
+}
+
+interface WorkpaperPeriod {
+  kind: DeclarationWorkpaperPeriodKind;
+  startMonth: number;
+  endMonth: number;
+}
+
+function resolveWorkpaperPeriod(dto: GenerateVatWorkpaperDto): WorkpaperPeriod {
+  const kind =
+    dto.periodKind ??
+    (dto.month ? DeclarationWorkpaperPeriodKind.MONTHLY : DeclarationWorkpaperPeriodKind.ANNUAL);
+  if (kind === DeclarationWorkpaperPeriodKind.ANNUAL) {
+    return { kind, startMonth: 1, endMonth: 12 };
+  }
+  if (!dto.month) {
+    throw new BadRequestException('month is required for monthly and quarterly workpapers.');
+  }
+  if (kind === DeclarationWorkpaperPeriodKind.QUARTERLY) {
+    if (![3, 6, 9, 12].includes(dto.month)) {
+      throw new BadRequestException('Quarterly workpapers require month 3, 6, 9, or 12.');
+    }
+    return { kind, startMonth: dto.month - 2, endMonth: dto.month };
+  }
+  return { kind, startMonth: dto.month, endMonth: dto.month };
+}
+
+function workpaperTitle(year: number, period: WorkpaperPeriod): string {
+  if (period.kind === DeclarationWorkpaperPeriodKind.ANNUAL) {
+    return `Workpaper ΦΠΑ ${year}`;
+  }
+  if (period.kind === DeclarationWorkpaperPeriodKind.QUARTERLY) {
+    return `Workpaper ΦΠΑ τριμήνου ${String(period.startMonth).padStart(2, '0')}-${String(period.endMonth).padStart(2, '0')}/${year}`;
+  }
+  return `Workpaper ΦΠΑ ${String(period.endMonth).padStart(2, '0')}/${year}`;
 }
 
 interface VatBreakdownRow {
@@ -222,7 +347,9 @@ function toVatTotals(
   }> = [],
   companyVatNumber = '',
 ): Prisma.InputJsonValue {
-  const uniqueSnapshots = [...new Map(snapshots.map((snapshot) => [snapshot.mark, snapshot])).values()];
+  const uniqueSnapshots = [
+    ...new Map(snapshots.map((snapshot) => [snapshot.mark, snapshot])).values(),
+  ];
   const totals = {
     salesNet: 0,
     salesVat: 0,
@@ -235,9 +362,8 @@ function toVatTotals(
     documentTypeBreakdown: [] as DocumentTypeBreakdownRow[],
     myDataReconciliation: {
       snapshotCount: uniqueSnapshots.length,
-      mismatches: uniqueSnapshots.filter(
-        (snapshot) => snapshot.reconciliationStatus !== 'MATCHED',
-      ).length,
+      mismatches: uniqueSnapshots.filter((snapshot) => snapshot.reconciliationStatus !== 'MATCHED')
+        .length,
       erpSalesNet: 0,
       erpSalesVat: 0,
       erpPurchasesNet: 0,

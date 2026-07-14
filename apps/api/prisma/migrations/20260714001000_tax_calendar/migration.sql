@@ -1,0 +1,40 @@
+CREATE TABLE `TaxCalendarRule` (
+  `id` VARCHAR(191) NOT NULL,
+  `accountingOfficeId` VARCHAR(191) NOT NULL,
+  `code` VARCHAR(80) NOT NULL,
+  `name` VARCHAR(191) NOT NULL,
+  `obligationType` ENUM('VAT_RETURN', 'MYDATA_REVIEW', 'WITHHOLDING_TAX', 'INCOME_TAX_PREP', 'PAYROLL_REVIEW', 'CUSTOM') NOT NULL,
+  `recurrence` ENUM('NONE', 'MONTHLY', 'QUARTERLY', 'ANNUAL') NOT NULL,
+  `dueMonthOffset` INTEGER NOT NULL,
+  `dueDay` INTEGER NOT NULL,
+  `applicableMonths` VARCHAR(80) NULL,
+  `accountingCategory` VARCHAR(40) NULL,
+  `vatRegime` VARCHAR(40) NULL,
+  `sourceUrl` VARCHAR(2000) NULL,
+  `notes` TEXT NULL,
+  `isActive` BOOLEAN NOT NULL DEFAULT true,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `TaxCalendarRule_accountingOfficeId_code_key` (`accountingOfficeId`, `code`),
+  INDEX `TaxCalRule_office_type_active_idx` (`accountingOfficeId`, `obligationType`, `isActive`),
+  CONSTRAINT `TaxCalendarRule_accountingOfficeId_fkey` FOREIGN KEY (`accountingOfficeId`) REFERENCES `AccountingOffice`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE TABLE `TaxCalendarOverride` (
+  `id` VARCHAR(191) NOT NULL,
+  `accountingOfficeId` VARCHAR(191) NOT NULL,
+  `taxCalendarRuleId` VARCHAR(191) NOT NULL,
+  `periodYear` INTEGER NOT NULL,
+  `periodMonth` INTEGER NOT NULL,
+  `dueDate` DATETIME(3) NOT NULL,
+  `sourceUrl` VARCHAR(2000) NULL,
+  `notes` TEXT NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `TaxCalendarOverride_taxCalendarRuleId_periodYear_periodMonth_key` (`taxCalendarRuleId`, `periodYear`, `periodMonth`),
+  INDEX `TaxCalOverride_office_period_idx` (`accountingOfficeId`, `periodYear`, `periodMonth`),
+  CONSTRAINT `TaxCalendarOverride_accountingOfficeId_fkey` FOREIGN KEY (`accountingOfficeId`) REFERENCES `AccountingOffice`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `TaxCalendarOverride_taxCalendarRuleId_fkey` FOREIGN KEY (`taxCalendarRuleId`) REFERENCES `TaxCalendarRule`(`id`) ON DELETE CASCADE ON UPDATE CASCADE
+);

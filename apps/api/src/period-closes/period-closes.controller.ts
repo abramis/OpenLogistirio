@@ -7,6 +7,7 @@ import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { GeneratePeriodCloseDto } from './dto/generate-period-close.dto';
 import { RejectPeriodCloseDto } from './dto/reject-period-close.dto';
+import { ReopenPeriodCloseDto } from './dto/reopen-period-close.dto';
 import { UpdatePeriodCloseCheckDto } from './dto/update-period-close-check.dto';
 import { PeriodClosesService } from './period-closes.service';
 
@@ -67,5 +68,15 @@ export class PeriodClosesController {
     @Body() dto: RejectPeriodCloseDto,
   ) {
     return this.periodClosesService.reject(tenant, id, dto.reason);
+  }
+
+  @Post(':id/reopen')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  reopen(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: ReopenPeriodCloseDto,
+  ) {
+    return this.periodClosesService.reopen(tenant, id, dto.reason);
   }
 }

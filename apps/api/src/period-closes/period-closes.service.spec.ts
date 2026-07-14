@@ -8,6 +8,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { PeriodClosesService } from './period-closes.service';
 
@@ -57,11 +58,16 @@ describe('PeriodClosesService', () => {
       declarationWorkpaper: { findFirst: jest.fn().mockResolvedValue({ id: 'vat-1' }) },
       periodCloseReview: {
         findFirst: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: 'close-1', ...create })),
+        upsert: jest
+          .fn()
+          .mockImplementation(({ create }) => Promise.resolve({ id: 'close-1', ...create })),
       },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'user-1' }) },
     };
-    const service = new PeriodClosesService(prisma as unknown as PrismaService);
+    const service = new PeriodClosesService(
+      prisma as unknown as PrismaService,
+      { record: jest.fn() } as unknown as AuditService,
+    );
 
     const result = await service.generate(tenant, {
       clientCompanyId: 'company-1',
@@ -108,7 +114,10 @@ describe('PeriodClosesService', () => {
         }),
       },
     };
-    const service = new PeriodClosesService(prisma as unknown as PrismaService);
+    const service = new PeriodClosesService(
+      prisma as unknown as PrismaService,
+      { record: jest.fn() } as unknown as AuditService,
+    );
 
     await expect(service.submit(tenant, 'close-1')).rejects.toThrow(BadRequestException);
   });
@@ -125,7 +134,10 @@ describe('PeriodClosesService', () => {
       },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'user-1' }) },
     };
-    const service = new PeriodClosesService(prisma as unknown as PrismaService);
+    const service = new PeriodClosesService(
+      prisma as unknown as PrismaService,
+      { record: jest.fn() } as unknown as AuditService,
+    );
 
     await service.approve(tenant, 'close-1');
 
@@ -135,6 +147,41 @@ describe('PeriodClosesService', () => {
           status: PeriodCloseReviewStatus.APPROVED,
           approvedById: 'user-1',
         }),
+      }),
+    );
+  });
+
+  it('reopens an approved review with an audit reason', async () => {
+    const update = jest.fn().mockImplementation(({ data }) => Promise.resolve(data));
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      periodCloseReview: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'close-1',
+          status: PeriodCloseReviewStatus.APPROVED,
+        }),
+        update,
+      },
+    };
+    const service = new PeriodClosesService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+
+    await service.reopen(tenant, 'close-1', 'Απαιτείται διορθωμένος έλεγχος ΦΠΑ.');
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: PeriodCloseReviewStatus.DRAFT,
+          reopenReason: 'Απαιτείται διορθωμένος έλεγχος ΦΠΑ.',
+        }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'PeriodCloseReview',
+        newValue: expect.objectContaining({ event: 'PERIOD_CLOSE_REOPENED' }),
       }),
     );
   });

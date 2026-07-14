@@ -7,6 +7,7 @@ import {
   PeriodCloseReviewStatus,
   Prisma,
 } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { GeneratePeriodCloseDto } from './dto/generate-period-close.dto';
@@ -19,11 +20,21 @@ interface CloseCheck {
   automatic: boolean;
   blocking: boolean;
   details: string;
+  note?: string;
+  attachments?: CloseCheckAttachment[];
+}
+
+interface CloseCheckAttachment {
+  name: string;
+  url: string;
 }
 
 @Injectable()
 export class PeriodClosesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   findAll(
     tenant: TenantContext,
@@ -112,7 +123,11 @@ export class PeriodClosesService {
     ]);
 
     const summary = buildReviewSummary(documents, journalEntries, snapshots, company.vatNumber);
-    const checklist = buildChecklist(summary, Boolean(vatWorkpaper), readChecklist(existing?.checklist));
+    const checklist = buildChecklist(
+      summary,
+      Boolean(vatWorkpaper),
+      readChecklist(existing?.checklist),
+    );
     const preparedById = await this.resolveTenantUserId(tenant);
     const data = {
       accountingOfficeId: tenant.accountingOfficeId,
@@ -131,6 +146,8 @@ export class PeriodClosesService {
       approvedAt: null,
       rejectedAt: null,
       rejectionReason: null,
+      reopenedAt: null,
+      reopenReason: null,
     };
 
     return this.prisma.periodCloseReview.upsert({
@@ -163,8 +180,17 @@ export class PeriodClosesService {
       throw new BadRequestException(`Unknown close checklist item ${dto.code}.`);
     }
     item.completed = dto.completed;
+    if (dto.note !== undefined) {
+      item.note = dto.note.trim() || undefined;
+    }
+    if (dto.attachments !== undefined) {
+      item.attachments = dto.attachments.map((attachment) => ({
+        name: attachment.name.trim(),
+        url: attachment.url.trim(),
+      }));
+    }
 
-    return this.prisma.periodCloseReview.update({
+    const updated = await this.prisma.periodCloseReview.update({
       where: { id: review.id },
       data: {
         checklist: checklist as unknown as Prisma.InputJsonValue,
@@ -174,6 +200,13 @@ export class PeriodClosesService {
       },
       include: periodCloseInclude,
     });
+    await this.recordAudit(tenant, review.id, 'PERIOD_CLOSE_CHECK_UPDATED', {
+      code: item.code,
+      completed: item.completed,
+      note: item.note ?? null,
+      attachments: item.attachments ?? [],
+    });
+    return updated;
   }
 
   async submit(tenant: TenantContext, id: string) {
@@ -190,7 +223,7 @@ export class PeriodClosesService {
       );
     }
 
-    return this.prisma.periodCloseReview.update({
+    const updated = await this.prisma.periodCloseReview.update({
       where: { id: review.id },
       data: {
         status: PeriodCloseReviewStatus.READY_FOR_REVIEW,
@@ -198,6 +231,10 @@ export class PeriodClosesService {
       },
       include: periodCloseInclude,
     });
+    await this.recordAudit(tenant, review.id, 'PERIOD_CLOSE_SUBMITTED', {
+      submittedAt: updated.submittedAt,
+    });
+    return updated;
   }
 
   async approve(tenant: TenantContext, id: string) {
@@ -206,7 +243,7 @@ export class PeriodClosesService {
       throw new BadRequestException('Submit the period close review before approval.');
     }
 
-    return this.prisma.periodCloseReview.update({
+    const updated = await this.prisma.periodCloseReview.update({
       where: { id: review.id },
       data: {
         status: PeriodCloseReviewStatus.APPROVED,
@@ -217,6 +254,11 @@ export class PeriodClosesService {
       },
       include: periodCloseInclude,
     });
+    await this.recordAudit(tenant, review.id, 'PERIOD_CLOSE_APPROVED', {
+      approvedAt: updated.approvedAt,
+      approvedById: updated.approvedById,
+    });
+    return updated;
   }
 
   async reject(tenant: TenantContext, id: string, reason: string) {
@@ -225,7 +267,7 @@ export class PeriodClosesService {
       throw new BadRequestException('Only a submitted review can be rejected.');
     }
 
-    return this.prisma.periodCloseReview.update({
+    const updated = await this.prisma.periodCloseReview.update({
       where: { id: review.id },
       data: {
         status: PeriodCloseReviewStatus.REJECTED,
@@ -235,6 +277,45 @@ export class PeriodClosesService {
         approvedAt: null,
       },
       include: periodCloseInclude,
+    });
+    await this.recordAudit(tenant, review.id, 'PERIOD_CLOSE_REJECTED', { reason });
+    return updated;
+  }
+
+  async reopen(tenant: TenantContext, id: string, reason: string) {
+    const review = await this.getTenantReview(tenant, id);
+    if (review.status !== PeriodCloseReviewStatus.APPROVED) {
+      throw new BadRequestException('Only an approved review can be reopened.');
+    }
+
+    const updated = await this.prisma.periodCloseReview.update({
+      where: { id: review.id },
+      data: {
+        status: PeriodCloseReviewStatus.DRAFT,
+        reopenReason: reason,
+        reopenedAt: new Date(),
+        approvedById: null,
+        approvedAt: null,
+        submittedAt: null,
+      },
+      include: periodCloseInclude,
+    });
+    await this.recordAudit(tenant, review.id, 'PERIOD_CLOSE_REOPENED', { reason });
+    return updated;
+  }
+
+  private async recordAudit(
+    tenant: TenantContext,
+    entityId: string,
+    event: string,
+    details: object,
+  ) {
+    await this.audit.record({
+      tenant,
+      action: 'UPDATE',
+      entityType: 'PeriodCloseReview',
+      entityId,
+      newValue: { event, ...details } as Prisma.InputJsonValue,
     });
   }
 
@@ -306,9 +387,13 @@ function buildReviewSummary(
   }>,
   companyVatNumber: string,
 ) {
-  const uniqueSnapshots = [...new Map(snapshots.map((snapshot) => [snapshot.mark, snapshot])).values()];
+  const uniqueSnapshots = [
+    ...new Map(snapshots.map((snapshot) => [snapshot.mark, snapshot])).values(),
+  ];
   const unpostedDocuments = documents.filter((document) => document.accountingLinks.length === 0);
-  const failedDocuments = documents.filter((document) => document.myDataStatus === MyDataStatus.FAILED);
+  const failedDocuments = documents.filter(
+    (document) => document.myDataStatus === MyDataStatus.FAILED,
+  );
   const unresolvedMyDataDocuments = documents.filter((document) => {
     if (document.documentType === DocumentType.PURCHASE_INVOICE) {
       return !document.myDataMark;
@@ -362,13 +447,18 @@ function buildReviewSummary(
   };
 }
 
-function vatSideTotals<T extends { invoiceType?: string | null; documentType?: DocumentType; netAmount: Prisma.Decimal | null; vatAmount: Prisma.Decimal | null }>(
-  items: T[],
-  side: (item: T) => 'sales' | 'purchases',
-) {
+function vatSideTotals<
+  T extends {
+    invoiceType?: string | null;
+    documentType?: DocumentType;
+    netAmount: Prisma.Decimal | null;
+    vatAmount: Prisma.Decimal | null;
+  },
+>(items: T[], side: (item: T) => 'sales' | 'purchases') {
   const totals = { salesNet: 0, salesVat: 0, purchasesNet: 0, purchasesVat: 0 };
   for (const item of items) {
-    const sign = item.documentType === DocumentType.CREDIT_NOTE || item.invoiceType?.startsWith('5.') ? -1 : 1;
+    const sign =
+      item.documentType === DocumentType.CREDIT_NOTE || item.invoiceType?.startsWith('5.') ? -1 : 1;
     const prefix = side(item) === 'sales' ? 'sales' : 'purchases';
     totals[`${prefix}Net`] += Number(item.netAmount ?? 0) * sign;
     totals[`${prefix}Vat`] += Number(item.vatAmount ?? 0) * sign;
@@ -386,17 +476,63 @@ function buildChecklist(
   hasVatWorkpaper: boolean,
   previous: CloseCheck[],
 ): CloseCheck[] {
-  const manualSupporting = previous.find(
-    (item) => item.code === 'SUPPORTING_DOCUMENTS_REVIEWED',
-  )?.completed;
+  const previousSupporting = previous.find((item) => item.code === 'SUPPORTING_DOCUMENTS_REVIEWED');
   return [
-    check('DOCUMENTS_POSTED', 'Όλα τα παραστατικά έχουν λογιστικοποιηθεί', summary.unpostedDocuments === 0, true, `${summary.unpostedDocuments} μη λογιστικοποιημένα`),
-    check('JOURNAL_BALANCED', 'Το ημερολόγιο είναι ισοσκελισμένο', summary.journalDifference === 0, true, `Διαφορά ${summary.journalDifference.toFixed(2)} €`),
-    check('MYDATA_RECONCILED', 'Ολοκληρώθηκε η συμφωνία myDATA', summary.unresolvedMyDataDocuments === 0 && summary.reconciliationMismatches === 0, true, `${summary.unresolvedMyDataDocuments} εκκρεμή ERP, ${summary.reconciliationMismatches} αποκλίσεις ΑΑΔΕ`),
-    check('FAILED_TRANSMISSIONS_RESOLVED', 'Δεν υπάρχουν αποτυχημένες διαβιβάσεις', summary.failedMyDataDocuments === 0, true, `${summary.failedMyDataDocuments} αποτυχίες`),
-    check('VAT_WORKPAPER_READY', 'Δημιουργήθηκε VAT workpaper περιόδου', hasVatWorkpaper, true, hasVatWorkpaper ? 'Διαθέσιμο' : 'Δεν βρέθηκε'),
-    check('VAT_RECONCILED', 'Τα σύνολα ΦΠΑ ERP και myDATA συμφωνούν', Object.values(summary.vatDelta).every((value) => value === 0), true, `Διαφορές καθαρών/ΦΠΑ: ${Object.values(summary.vatDelta).map((value) => value.toFixed(2)).join(' / ')} €`),
-    check('SUPPORTING_DOCUMENTS_REVIEWED', 'Ελέγχθηκαν τα δικαιολογητικά και οι εξαιρέσεις', manualSupporting ?? false, false, 'Χειροκίνητη επιβεβαίωση'),
+    check(
+      'DOCUMENTS_POSTED',
+      'Όλα τα παραστατικά έχουν λογιστικοποιηθεί',
+      summary.unpostedDocuments === 0,
+      true,
+      `${summary.unpostedDocuments} μη λογιστικοποιημένα`,
+    ),
+    check(
+      'JOURNAL_BALANCED',
+      'Το ημερολόγιο είναι ισοσκελισμένο',
+      summary.journalDifference === 0,
+      true,
+      `Διαφορά ${summary.journalDifference.toFixed(2)} €`,
+    ),
+    check(
+      'MYDATA_RECONCILED',
+      'Ολοκληρώθηκε η συμφωνία myDATA',
+      summary.unresolvedMyDataDocuments === 0 && summary.reconciliationMismatches === 0,
+      true,
+      `${summary.unresolvedMyDataDocuments} εκκρεμή ERP, ${summary.reconciliationMismatches} αποκλίσεις ΑΑΔΕ`,
+    ),
+    check(
+      'FAILED_TRANSMISSIONS_RESOLVED',
+      'Δεν υπάρχουν αποτυχημένες διαβιβάσεις',
+      summary.failedMyDataDocuments === 0,
+      true,
+      `${summary.failedMyDataDocuments} αποτυχίες`,
+    ),
+    check(
+      'VAT_WORKPAPER_READY',
+      'Δημιουργήθηκε VAT workpaper περιόδου',
+      hasVatWorkpaper,
+      true,
+      hasVatWorkpaper ? 'Διαθέσιμο' : 'Δεν βρέθηκε',
+    ),
+    check(
+      'VAT_RECONCILED',
+      'Τα σύνολα ΦΠΑ ERP και myDATA συμφωνούν',
+      Object.values(summary.vatDelta).every((value) => value === 0),
+      true,
+      `Διαφορές καθαρών/ΦΠΑ: ${Object.values(summary.vatDelta)
+        .map((value) => value.toFixed(2))
+        .join(' / ')} €`,
+    ),
+    {
+      ...check(
+        'SUPPORTING_DOCUMENTS_REVIEWED',
+        'Ελέγχθηκαν τα δικαιολογητικά και οι εξαιρέσεις',
+        previousSupporting?.completed ?? false,
+        false,
+        'Χειροκίνητη επιβεβαίωση',
+      ),
+      note: previousSupporting?.note,
+      attachments: previousSupporting?.attachments,
+    },
   ];
 }
 

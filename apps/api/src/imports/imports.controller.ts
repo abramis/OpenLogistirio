@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
 import { Roles } from '../auth/roles.decorator';
@@ -21,5 +21,17 @@ export class ImportsController {
   @Roles(...OFFICE_WRITE_ROLES)
   importDocumentsCsv(@CurrentTenant() tenant: TenantContext, @Body() dto: ImportDocumentsCsvDto) {
     return this.importsService.importDocumentsCsv(tenant, dto);
+  }
+
+  @Get(':id/error-report')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  errorReport(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.importsService.errorReportCsv(tenant, id);
+  }
+
+  @Post(':id/rollback')
+  @Roles(...OFFICE_WRITE_ROLES)
+  rollback(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.importsService.rollback(tenant, id);
   }
 }

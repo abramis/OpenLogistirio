@@ -6,6 +6,7 @@ import { RouterLink } from '@angular/router';
 import { BehaviorSubject, combineLatest, map, switchMap } from 'rxjs';
 import {
   DocumentListItem,
+  DocumentCorrectionChainItem,
   DocumentsApiService,
   TransmissionAttempt,
 } from '../../core/api/documents-api.service';
@@ -165,6 +166,8 @@ import {
               <td>
                 <strong>{{ document.series || '-' }}/{{ document.documentNumber }}</strong>
                 <small>{{ document.documentType }}</small>
+                <small *ngIf="document.replacesDocumentId">Replacement invoice</small>
+                <small *ngIf="document.correctsDocumentId">Credit correction</small>
               </td>
               <td>
                 {{ document.clientCompany.legalName }}
@@ -206,6 +209,15 @@ import {
                 </small>
               </td>
               <td class="doc-actions">
+                <button
+                  type="button"
+                  class="btn btn-xs btn-secondary"
+                  title="Διόρθωση λήπτη"
+                  *ngIf="document.myDataStatus === 'DRAFT' || document.myDataStatus === 'FAILED'"
+                  (click)="editCounterparty(document)"
+                >
+                  <span class="material-symbols-outlined">person_edit</span> Λήπτης
+                </button>
                 <button
                   type="button"
                   class="btn btn-xs btn-secondary"
@@ -287,6 +299,24 @@ import {
                 >
                   <span class="material-symbols-outlined">cancel</span> Cancel
                 </button>
+                <a
+                  class="btn btn-xs btn-secondary"
+                  *ngIf="document.myDataStatus === 'CANCELLED'"
+                  [routerLink]="['/documents/new']"
+                  [queryParams]="{ replaces: document.id }"
+                  title="Replacement invoice"
+                >
+                  <span class="material-symbols-outlined">find_replace</span> Replace
+                </a>
+                <a
+                  class="btn btn-xs btn-secondary"
+                  *ngIf="supportsSendInvoices(document) && document.myDataStatus === 'SENT'"
+                  [routerLink]="['/documents/new']"
+                  [queryParams]="{ corrects: document.id }"
+                  title="Credit correction"
+                >
+                  <span class="material-symbols-outlined">edit_note</span> Credit
+                </a>
                 <button
                   type="button"
                   class="btn btn-xs btn-ghost"
@@ -294,6 +324,14 @@ import {
                   (click)="loadHistory(document)"
                 >
                   <span class="material-symbols-outlined">history</span>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost"
+                  title="Αλυσίδα διόρθωσης"
+                  (click)="loadCorrectionChain(document)"
+                >
+                  <span class="material-symbols-outlined">account_tree</span>
                 </button>
               </td>
             </tr>
@@ -354,6 +392,30 @@ import {
           >
           <small *ngIf="attempt.forcedRetry">forced retry</small>
           <small *ngIf="attempt.errorMessage">{{ attempt.errorMessage }}</small>
+        </li>
+      </ol>
+    </div>
+
+    <div class="card preview-panel" *ngIf="correctionChain.length > 0">
+      <div class="preview-header">
+        <h2 class="card-title">
+          <span class="material-symbols-outlined">account_tree</span>
+          Αλυσίδα διόρθωσης
+        </h2>
+        <button type="button" class="btn btn-sm btn-secondary" (click)="correctionChain = []">
+          <span class="material-symbols-outlined">close</span>
+          Κλείσιμο
+        </button>
+      </div>
+      <ol class="history-list correction-chain-list">
+        <li *ngFor="let item of correctionChain" class="history-item">
+          <span class="material-symbols-outlined chain-icon">{{ chainIcon(item) }}</span>
+          <strong>{{ item.series || '-' }}/{{ item.documentNumber }}</strong>
+          <span>{{ documentTypeLabel(item.documentType) }}</span>
+          <span class="history-meta">{{ item.issueDate | date: 'dd/MM/yy' }} · {{ item.totalAmount | number: '1.2-2' }} €</span>
+          <span class="badge" [class.badge-success]="item.myDataStatus === 'SENT'" [class.badge-neutral]="item.myDataStatus === 'CANCELLED'">{{ statusLabel(item.myDataStatus) }}</span>
+          <small>{{ correctionRelationLabel(item) }}</small>
+          <small *ngIf="item.myDataMark">MARK: {{ item.myDataMark }}</small>
         </li>
       </ol>
     </div>
@@ -491,6 +553,10 @@ import {
       .history-meta {
         color: var(--muted);
       }
+      .chain-icon {
+        font-size: 18px;
+        color: var(--primary);
+      }
 
       @media (max-width: 1200px) {
         .kpi-row {
@@ -526,6 +592,7 @@ export class DocumentsListPageComponent {
   filters = this.defaultFilters();
   xmlPreview = '';
   history: TransmissionAttempt[] = [];
+  correctionChain: DocumentCorrectionChainItem[] = [];
   message = '';
   errorMessage = '';
 
@@ -595,6 +662,33 @@ export class DocumentsListPageComponent {
       },
       error: (error: unknown) => this.showError(error),
     });
+  }
+
+  editCounterparty(document: DocumentListItem): void {
+    const vatNumber = window.prompt('ΑΦΜ λήπτη (9 ψηφία):', document.counterpartyVatNumber ?? '');
+    if (vatNumber === null) {
+      return;
+    }
+    const counterpartyName = window.prompt(
+      'Ονομασία λήπτη (προαιρετικά):',
+      document.counterpartyName ?? '',
+    );
+    if (counterpartyName === null || !vatNumber.trim()) {
+      return;
+    }
+    this.clearMessages();
+    this.documentsApi
+      .updateCounterparty(document.id, {
+        counterpartyVatNumber: vatNumber.trim(),
+        counterpartyName: counterpartyName.trim() || undefined,
+      })
+      .subscribe({
+        next: () => {
+          this.message = 'Ο λήπτης ενημερώθηκε.';
+          this.reload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
   }
 
   sendMock(document: DocumentListItem): void {
@@ -701,6 +795,16 @@ export class DocumentsListPageComponent {
     this.documentsApi.getMyDataHistory(document.id).subscribe({
       next: (history) => {
         this.history = history;
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  loadCorrectionChain(document: DocumentListItem): void {
+    this.clearMessages();
+    this.documentsApi.getCorrectionChain(document.id).subscribe({
+      next: (chain) => {
+        this.correctionChain = chain;
       },
       error: (error: unknown) => this.showError(error),
     });
@@ -838,6 +942,26 @@ export class DocumentsListPageComponent {
     };
 
     return labels[status] ?? status;
+  }
+
+  documentTypeLabel(documentType: string): string {
+    const labels: Record<string, string> = {
+      SALES_INVOICE: 'Τιμολόγιο πώλησης',
+      PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
+      CREDIT_NOTE: 'Πιστωτικό',
+      RETAIL_RECEIPT: 'Απόδειξη λιανικής',
+    };
+    return labels[documentType] ?? documentType;
+  }
+
+  correctionRelationLabel(item: DocumentCorrectionChainItem): string {
+    if (item.replacesDocumentId) return 'Αντικαθιστά ακυρωμένο παραστατικό';
+    if (item.correctsDocumentId) return 'Πιστωτικό διόρθωσης';
+    return 'Αρχικό παραστατικό';
+  }
+
+  chainIcon(item: DocumentCorrectionChainItem): string {
+    return item.replacesDocumentId ? 'find_replace' : item.correctsDocumentId ? 'edit_note' : 'description';
   }
 
   private clearMessages(): void {

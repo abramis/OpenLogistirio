@@ -2,6 +2,7 @@ import { AsyncPipe, DatePipe, NgFor, NgIf } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import readXlsxFile from 'read-excel-file/browser';
 import { BehaviorSubject, switchMap } from 'rxjs';
 import { CompaniesApiService } from '../../core/api/companies-api.service';
 import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/imports-api.service';
@@ -14,12 +15,14 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
     <section class="page-header">
       <div>
         <h1 class="page-title">Imports</h1>
-        <p class="page-subtitle">Μαζική εισαγωγή παραστατικών από CSV exports παλιών συστημάτων.</p>
+        <p class="page-subtitle">
+          Μαζική εισαγωγή πολυγραμμικών παραστατικών από CSV ή Excel exports παλιών συστημάτων.
+        </p>
       </div>
       <div class="page-actions">
-        <button class="btn btn-secondary" type="button" (click)="downloadTemplate()">
+        <button class="btn btn-secondary" type="button" (click)="downloadCsvTemplate()">
           <span class="material-symbols-outlined">download</span>
-          Template
+          Template για Excel / CSV
         </button>
       </div>
     </section>
@@ -32,11 +35,12 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
         <div>
           <h2 class="card-title">
             <span class="material-symbols-outlined">upload_file</span>
-            CSV παραστατικών
+            Παραστατικά CSV / Excel
           </h2>
           <p class="card-subtitle">
-            Υποστηρίζει τύπο παραστατικού, ποσά, ΦΠΑ, κωδικό κίνησης, ημερολόγιο και
-            αντισυμβαλλόμενο.
+            Κάθε γραμμή μπορεί να είναι μία γραμμή παραστατικού: επαναλάβετε τα στοιχεία header και
+            συμπληρώστε τα πεδία <code>line*</code> για πολυγραμμικό παραστατικό. Υποστηρίζεται CSV
+            και το πρώτο φύλλο αρχείου <code>.xlsx</code>.
           </p>
         </div>
       </div>
@@ -51,11 +55,11 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
           </select>
         </label>
         <label>
-          Αρχείο CSV
-          <input type="file" accept=".csv,text/csv" (change)="readFile($event)" />
+          Αρχείο CSV ή Excel
+          <input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" (change)="readFile($event)" />
         </label>
         <label class="wide">
-          CSV κείμενο
+          Δεδομένα εισαγωγής
           <textarea [(ngModel)]="csvText" rows="9"></textarea>
         </label>
         <div class="wide actions">
@@ -115,12 +119,16 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
           <thead>
             <tr>
               <th>Γραμμή</th>
+              <th>Πεδίο</th>
+              <th>Τύπος</th>
               <th>Σφάλμα</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let error of lastResult.errors">
               <td>{{ error.rowNumber }}</td>
+              <td>{{ error.field || '-' }}</td>
+              <td>{{ error.code }}</td>
               <td>{{ error.message }}</td>
             </tr>
           </tbody>
@@ -169,6 +177,7 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
             <th>Status</th>
             <th class="tr">Rows</th>
             <th class="tr">Failed</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -191,6 +200,24 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
             </td>
             <td class="tr">{{ batch.successfulRows }}/{{ batch.totalRows }}</td>
             <td class="tr">{{ batch.failedRows }}</td>
+            <td class="tr">
+              <button
+                class="btn btn-secondary btn-small"
+                type="button"
+                *ngIf="batch.failedRows > 0"
+                (click)="downloadErrorReport(batch)"
+              >
+                Errors CSV
+              </button>
+              <button
+                class="btn btn-danger btn-small"
+                type="button"
+                *ngIf="batch.status === 'COMPLETED'"
+                (click)="rollback(batch)"
+              >
+                Rollback
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -272,6 +299,13 @@ import { DocumentsCsvImportResponse, ImportsApiService } from '../../core/api/im
         color: var(--err);
       }
 
+      .btn-small {
+        min-height: 30px;
+        margin-left: 5px;
+        padding: 4px 7px;
+        font-size: 0.72rem;
+      }
+
       td small {
         display: block;
         margin-top: 3px;
@@ -305,28 +339,28 @@ export class ImportsPageComponent {
   message = '';
   errorMessage = '';
 
-  readFile(event: Event): void {
+  async readFile(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
-    this.fileName = file.name;
-    file.text().then((text) => {
-      this.csvText = text;
-    });
+    this.errorMessage = '';
+    try {
+      this.fileName = file.name;
+      this.csvText = isExcelFile(file)
+        ? await csvFromWorkbook(file)
+        : await file.text();
+    } catch (error: unknown) {
+      this.showError(error);
+    }
   }
 
   loadSample(): void {
     this.csvText = documentsCsvTemplate();
   }
 
-  downloadTemplate(): void {
+  downloadCsvTemplate(): void {
     const blob = new Blob([documentsCsvTemplate()], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'documents-import-template.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, 'documents-import-template.csv');
   }
 
   preview(): void {
@@ -342,6 +376,7 @@ export class ImportsPageComponent {
       PREVIEW: 'Preview',
       COMPLETED: 'Ολοκληρώθηκε',
       FAILED: 'Απέτυχε',
+      ROLLED_BACK: 'Ανακλήθηκε',
     };
 
     return labels[status] ?? status;
@@ -352,6 +387,33 @@ export class ImportsPageComponent {
     return typeof value === 'string' || typeof value === 'number' || value instanceof Date
       ? value
       : null;
+  }
+
+  downloadErrorReport(batch: { id: string; fileName?: string | null }): void {
+    this.importsApi.errorReportCsv(batch.id).subscribe({
+      next: (csv) => {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${batch.fileName || 'import'}-errors.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  rollback(batch: { id: string }): void {
+    this.message = '';
+    this.errorMessage = '';
+    this.importsApi.rollback(batch.id).subscribe({
+      next: () => {
+        this.message = 'Το import ανακλήθηκε. Τα παραστατικά του batch διαγράφηκαν λογικά.';
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
   }
 
   private submit(dryRun: boolean): void {
@@ -385,22 +447,107 @@ export class ImportsPageComponent {
 }
 
 function documentsCsvTemplate(): string {
+  const headers = documentsImportHeaders();
   return [
-    [
-      'documentType',
-      'series',
-      'documentNumber',
-      'issueDate',
-      'counterpartyName',
-      'counterpartyVatNumber',
-      'movementCode',
-      'journalCode',
-      'netAmount',
-      'vatAmount',
-      'totalAmount',
-      'vatCategory',
-    ].join(','),
-    'SALES_INVOICE,A,100,2026-07-06,Demo Customer,999888777,SALE_INVOICE,SALES,100,24,124,VAT_24',
-    'PURCHASE_INVOICE,B,42,2026-07-08,Demo Supplier,123123123,PURCHASE_INVOICE,PURCHASES,50,12,62,VAT_24',
+    headers.join(','),
+    ...documentsImportRows().map((row) =>
+      headers.map((header) => csvCell(row[header] ?? '')).join(','),
+    ),
   ].join('\n');
+}
+
+function documentsImportHeaders(): string[] {
+  return [
+    'documentType', 'series', 'documentNumber', 'issueDate', 'counterpartyName',
+    'counterpartyVatNumber', 'movementCode', 'journalCode', 'netAmount', 'vatAmount',
+    'totalAmount', 'vatCategory', 'paymentMethodType', 'paymentNumber', 'paymentType',
+    'paymentAmount', 'paymentMethodInfo', 'paymentTransactionId', 'paymentTid',
+    'paymentProviderSigningAuthor', 'paymentProviderSignature', 'paymentEcrSigningAuthor',
+    'paymentEcrSessionNumber', 'withheldAmount', 'withheldCategory', 'feesAmount',
+    'feesCategory', 'stampDutyAmount', 'stampDutyCategory', 'otherTaxesAmount',
+    'otherTaxesCategory', 'deductionsAmount', 'lineItemCode', 'lineDescription',
+    'lineQuantity', 'lineMeasurementUnit', 'lineUnitPrice', 'lineNetAmount', 'lineVatAmount',
+    'lineVatCategory', 'lineVatExemptionCategory', 'lineDiscountAmount',
+    'lineDiscountOption', 'lineWithheldAmount', 'lineWithheldCategory', 'lineFeesAmount',
+    'lineFeesCategory', 'lineStampDutyAmount', 'lineStampDutyCategory', 'lineOtherTaxesAmount',
+    'lineOtherTaxesCategory', 'lineDeductionsAmount', 'lineIncomeClassificationType',
+    'lineIncomeClassificationCategory', 'lineExpenseClassificationType',
+    'lineExpenseClassificationCategory', 'lineVatClassificationType',
+  ];
+}
+
+function documentsImportRows(): Array<Record<string, string | number>> {
+  return [
+    {
+      documentType: 'SALES_INVOICE', series: 'A', documentNumber: '100', issueDate: '2026-07-06',
+      counterpartyName: 'Demo Customer', counterpartyVatNumber: '999888777',
+      movementCode: 'SALE_INVOICE', journalCode: 'SALES', netAmount: 150, vatAmount: 30,
+      totalAmount: 180, vatCategory: 'MULTIPLE', paymentMethodType: 7, paymentNumber: 1,
+      paymentType: 7, paymentAmount: 180, paymentMethodInfo: 'POS front desk',
+      paymentTransactionId: 'TX-100', paymentTid: 'TID-1', paymentProviderSigningAuthor: 'PROVIDER',
+      paymentProviderSignature: 'signature', paymentEcrSigningAuthor: 'ECR-1',
+      paymentEcrSessionNumber: '123456', lineItemCode: 'SERV-1', lineDescription: 'Υπηρεσία 24%',
+      lineQuantity: 1, lineMeasurementUnit: 7, lineUnitPrice: 100, lineNetAmount: 100,
+      lineVatAmount: 24, lineVatCategory: 'VAT_24', lineIncomeClassificationType: 'E3_561_001',
+      lineIncomeClassificationCategory: 'category1_1', lineVatClassificationType: 'VAT_361',
+    },
+    {
+      documentType: 'SALES_INVOICE', series: 'A', documentNumber: '100', issueDate: '2026-07-06',
+      counterpartyName: 'Demo Customer', counterpartyVatNumber: '999888777',
+      movementCode: 'SALE_INVOICE', journalCode: 'SALES', netAmount: 150, vatAmount: 30,
+      totalAmount: 180, vatCategory: 'MULTIPLE', lineItemCode: 'BOOK-1',
+      lineDescription: 'Έντυπο 6%', lineQuantity: 2, lineMeasurementUnit: 1, lineUnitPrice: 25,
+      lineNetAmount: 50, lineVatAmount: 6, lineVatCategory: 'VAT_6',
+      lineIncomeClassificationType: 'E3_561_001', lineIncomeClassificationCategory: 'category1_1',
+      lineVatClassificationType: 'VAT_363',
+    },
+    {
+      documentType: 'PURCHASE_INVOICE', series: 'B', documentNumber: '42', issueDate: '2026-07-08',
+      counterpartyName: 'Demo Supplier', counterpartyVatNumber: '123123123',
+      movementCode: 'PURCHASE_INVOICE', journalCode: 'PURCHASES', netAmount: 50, vatAmount: 12,
+      totalAmount: 62, vatCategory: 'VAT_24', paymentMethodType: 3, paymentNumber: 1,
+      paymentType: 3, paymentAmount: 62, lineItemCode: 'OFFICE-1', lineDescription: 'Γραφική ύλη',
+      lineQuantity: 1, lineMeasurementUnit: 1, lineUnitPrice: 50, lineNetAmount: 50,
+      lineVatAmount: 12, lineVatCategory: 'VAT_24', lineExpenseClassificationType: 'E3_102_001',
+      lineExpenseClassificationCategory: 'category2_4', lineVatClassificationType: 'VAT_361',
+    },
+  ];
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function isExcelFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith('.xlsx');
+}
+
+async function csvFromWorkbook(file: File): Promise<string> {
+  const rows = (await readXlsxFile(file))[0]?.data ?? [];
+  const nonEmptyRows = rows.filter((row) => row.some((cell) => cell !== null && cell !== ''));
+  if (nonEmptyRows.length === 0) {
+    throw new Error('Το πρώτο φύλλο Excel είναι κενό.');
+  }
+  return nonEmptyRows
+    .map((row) => row.map((cell) => csvCell(excelCellValue(cell))).join(','))
+    .join('\n');
+}
+
+function excelCellValue(value: unknown): string | number | boolean {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  return value == null ? '' : String(value);
+}
+
+function downloadBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }

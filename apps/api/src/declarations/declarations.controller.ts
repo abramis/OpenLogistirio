@@ -6,6 +6,7 @@ import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { DeclarationsService } from './declarations.service';
 import { GenerateVatWorkpaperDto } from './dto/generate-vat-workpaper.dto';
+import { SubmitDeclarationWorkpaperDto } from './dto/submit-declaration-workpaper.dto';
 
 @ApiTags('declarations')
 @Controller('declarations')
@@ -39,5 +40,21 @@ export class DeclarationsController {
   @Roles(...ACCOUNTING_CONTROL_ROLES)
   approve(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.declarationsService.approve(tenant, id);
+  }
+
+  @Post('workpapers/:id/submit')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  submit(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: SubmitDeclarationWorkpaperDto,
+  ) {
+    return this.declarationsService.submit(tenant, id, dto);
+  }
+
+  @Post('workpapers/:id/archive')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  archive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.declarationsService.archive(tenant, id);
   }
 }

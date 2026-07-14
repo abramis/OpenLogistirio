@@ -203,6 +203,104 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
           </ng-container>
         </div>
 
+        <div class="card detail-section classification-section">
+          <div class="card-header">
+            <h2 class="card-title">
+              <span class="material-symbols-outlined">category</span>
+              Προφίλ χαρακτηρισμών myDATA
+            </h2>
+          </div>
+          <p class="section-note">
+            Εφαρμόζονται αυτόματα στις γραμμές που δεν έχουν ρητό χαρακτηρισμό. Όσο πιο συγκεκριμένο
+            το προφίλ, τόσο υψηλότερη η προτεραιότητά του.
+          </p>
+          <div class="profile-form">
+            <label class="field">
+              <span class="field-label">Κωδικός *</span>
+              <input [(ngModel)]="profileCode" placeholder="π.χ. CONSULTING_24" />
+            </label>
+            <label class="field">
+              <span class="field-label">Ονομασία *</span>
+              <input [(ngModel)]="profileName" placeholder="π.χ. Υπηρεσίες συμβουλευτικής" />
+            </label>
+            <label class="field">
+              <span class="field-label">Τύπος παραστατικού</span>
+              <select [(ngModel)]="profileDocumentType">
+                <option value="">Κάθε τύπος</option>
+                <option value="SALES_INVOICE">Τιμολόγιο πώλησης</option>
+                <option value="PURCHASE_INVOICE">Τιμολόγιο αγοράς</option>
+                <option value="CREDIT_NOTE">Πιστωτικό</option>
+                <option value="RETAIL_RECEIPT">Λιανική</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Κωδικός κίνησης</span>
+              <input [(ngModel)]="profileMovementCode" placeholder="π.χ. SALE_INVOICE" />
+            </label>
+            <label class="field">
+              <span class="field-label">Κατηγορία ΦΠΑ</span>
+              <select [(ngModel)]="profileVatCategory">
+                <option value="">Κάθε ΦΠΑ</option>
+                <option value="VAT_24">VAT_24</option>
+                <option value="VAT_13">VAT_13</option>
+                <option value="VAT_6">VAT_6</option>
+                <option value="VAT_0">VAT_0</option>
+                <option value="NO_VAT">NO_VAT</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Κωδικός είδους γραμμής</span>
+              <input [(ngModel)]="profileItemCode" placeholder="π.χ. CONSULTING" />
+            </label>
+            <label class="field">
+              <span class="field-label">Έσοδο — type</span>
+              <input [(ngModel)]="profileIncomeType" placeholder="E3_561_001" />
+            </label>
+            <label class="field">
+              <span class="field-label">Έσοδο — category</span>
+              <input [(ngModel)]="profileIncomeCategory" placeholder="category1_1" />
+            </label>
+            <label class="field">
+              <span class="field-label">Έξοδο — type</span>
+              <input [(ngModel)]="profileExpenseType" placeholder="E3_102_001" />
+            </label>
+            <label class="field">
+              <span class="field-label">Έξοδο — category</span>
+              <input [(ngModel)]="profileExpenseCategory" placeholder="category2_4" />
+            </label>
+            <label class="field">
+              <span class="field-label">VAT classification</span>
+              <input [(ngModel)]="profileVatClassificationType" placeholder="VAT_361" />
+            </label>
+            <label class="field">
+              <span class="field-label">Προτεραιότητα</span>
+              <input [(ngModel)]="profilePriority" type="number" min="-1000" max="1000" />
+            </label>
+            <div class="profile-actions">
+              <button class="btn btn-primary" type="button" (click)="saveProfile(company.id)">
+                <span class="material-symbols-outlined">save</span>
+                Αποθήκευση προφίλ
+              </button>
+              <span class="field-note" *ngIf="profileStatus">{{ profileStatus }}</span>
+              <span class="field-error" *ngIf="profileError">{{ profileError }}</span>
+            </div>
+          </div>
+          <ng-container *ngIf="classificationProfiles$ | async as profiles">
+            <div class="setup-empty" *ngIf="profiles.length === 0">
+              Δεν υπάρχουν custom profiles. Τα προεπιλεγμένα προστίθενται με την εφαρμογή setup
+              template.
+            </div>
+            <div class="profile-list" *ngIf="profiles.length > 0">
+              <div class="profile-row" *ngFor="let profile of profiles">
+                <strong>{{ profile.name }}</strong>
+                <code>{{ profile.code }}</code>
+                <span>{{ profileScope(profile.metadata) }}</span>
+                <small>{{ profileClassification(profile.metadata) }}</small>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+
         <div class="card detail-section reconciliation-section">
           <div class="card-header">
             <h2 class="card-title">
@@ -397,6 +495,44 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
         min-width: 0;
       }
 
+      .section-note {
+        margin: 0 18px 14px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.45;
+      }
+      .profile-form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 12px;
+        padding: 0 18px 16px;
+      }
+      .profile-actions {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .profile-list {
+        border-top: 1px solid var(--border);
+      }
+      .profile-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 1fr) minmax(110px, auto);
+        gap: 3px 12px;
+        padding: 10px 18px;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.8rem;
+      }
+      .profile-row code {
+        color: var(--muted);
+      }
+      .profile-row span,
+      .profile-row small {
+        color: var(--muted);
+      }
+
       .detail-dl {
         margin: 0;
       }
@@ -570,6 +706,11 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
           grid-template-columns: 1fr;
         }
 
+        .profile-form,
+        .profile-row {
+          grid-template-columns: 1fr;
+        }
+
         .setup-row:nth-child(odd) {
           border-right: none;
         }
@@ -583,12 +724,27 @@ export class CompanyDetailsPageComponent {
   private readonly documentsApi = inject(DocumentsApiService);
   private readonly myDataApi = inject(MyDataApiService);
   private readonly setupReload$ = new BehaviorSubject<void>(undefined);
+  private readonly classificationProfilesReload$ = new BehaviorSubject<void>(undefined);
   private readonly reconciliationReload$ = new BehaviorSubject<void>(undefined);
 
   selectedTemplateId = '';
   isApplyingSetup = false;
   setupStatus = '';
   setupError = '';
+  profileCode = '';
+  profileName = '';
+  profileDocumentType = '';
+  profileMovementCode = '';
+  profileVatCategory = '';
+  profileItemCode = '';
+  profileIncomeType = '';
+  profileIncomeCategory = '';
+  profileExpenseType = '';
+  profileExpenseCategory = '';
+  profileVatClassificationType = '';
+  profilePriority = 0;
+  profileStatus = '';
+  profileError = '';
   isSyncingMyData = false;
   myDataSyncStatus = '';
   myDataSyncError = '';
@@ -610,6 +766,12 @@ export class CompanyDetailsPageComponent {
     switchMap(() => this.route.paramMap),
     map((params) => params.get('id') ?? ''),
     switchMap((id) => this.companiesApi.findSetupItems(id)),
+  );
+
+  readonly classificationProfiles$ = this.classificationProfilesReload$.pipe(
+    switchMap(() => this.route.paramMap),
+    map((params) => params.get('id') ?? ''),
+    switchMap((id) => this.companiesApi.findMyDataClassificationProfiles(id)),
   );
 
   readonly movementBook$ = this.setupReload$.pipe(
@@ -644,6 +806,7 @@ export class CompanyDetailsPageComponent {
         this.isApplyingSetup = false;
         this.setupStatus = `Εφαρμόστηκαν ${result.appliedCount} στοιχεία παραμετροποίησης.`;
         this.setupReload$.next();
+        this.classificationProfilesReload$.next();
       },
       error: (error: { error?: { message?: string | string[] }; message?: string }) => {
         this.isApplyingSetup = false;
@@ -653,6 +816,42 @@ export class CompanyDetailsPageComponent {
           : (message ?? 'Δεν ολοκληρώθηκε η εφαρμογή προτύπου.');
       },
     });
+  }
+
+  saveProfile(companyId: string): void {
+    this.profileStatus = '';
+    this.profileError = '';
+    if (!this.profileCode.trim() || !this.profileName.trim()) {
+      this.profileError = 'Συμπλήρωσε κωδικό και ονομασία.';
+      return;
+    }
+    this.companiesApi
+      .upsertMyDataClassificationProfile(companyId, {
+        code: this.profileCode.trim(),
+        name: this.profileName.trim(),
+        documentType: emptyToUndefined(this.profileDocumentType),
+        movementCode: emptyToUndefined(this.profileMovementCode),
+        vatCategory: emptyToUndefined(this.profileVatCategory),
+        itemCode: emptyToUndefined(this.profileItemCode),
+        incomeClassificationType: emptyToUndefined(this.profileIncomeType),
+        incomeClassificationCategory: emptyToUndefined(this.profileIncomeCategory),
+        expenseClassificationType: emptyToUndefined(this.profileExpenseType),
+        expenseClassificationCategory: emptyToUndefined(this.profileExpenseCategory),
+        vatClassificationType: emptyToUndefined(this.profileVatClassificationType),
+        priority: Number(this.profilePriority),
+      })
+      .subscribe({
+        next: () => {
+          this.profileStatus = 'Το προφίλ αποθηκεύτηκε.';
+          this.classificationProfilesReload$.next();
+        },
+        error: (error: { error?: { message?: string | string[] }; message?: string }) => {
+          const message = error.error?.message ?? error.message;
+          this.profileError = Array.isArray(message)
+            ? message.join(', ')
+            : (message ?? 'Δεν αποθηκεύτηκε το προφίλ.');
+        },
+      });
   }
 
   syncMyData(companyId: string): void {
@@ -719,9 +918,37 @@ export class CompanyDetailsPageComponent {
       DEPRECIATION_RULE: 'Κανόνες απόσβεσης',
       TAX_ADJUSTMENT: 'Αναμόρφωση',
       INTRASTAT: 'Intrastat',
+      MYDATA_CLASSIFICATION_PROFILE: 'Χαρακτηρισμοί myDATA',
     };
 
     return labels[kind] ?? kind;
+  }
+
+  profileScope(metadata: Record<string, unknown> | null | undefined): string {
+    if (!metadata) return 'Χωρίς περιορισμό';
+    return (
+      [
+        metadata['documentType'],
+        metadata['movementCode'],
+        metadata['vatCategory'],
+        metadata['itemCode'],
+      ]
+        .filter((value) => typeof value === 'string' && value.length > 0)
+        .join(' · ') || 'Χωρίς περιορισμό'
+    );
+  }
+
+  profileClassification(metadata: Record<string, unknown> | null | undefined): string {
+    if (!metadata) return '';
+    return [
+      metadata['incomeClassificationType'],
+      metadata['incomeClassificationCategory'],
+      metadata['expenseClassificationType'],
+      metadata['expenseClassificationCategory'],
+      metadata['vatClassificationType'],
+    ]
+      .filter((value) => typeof value === 'string' && value.length > 0)
+      .join(' · ');
   }
 
   movementLabel(code?: string | null): string {
@@ -806,6 +1033,11 @@ function sumByMovement(documents: DocumentListItem[], movementCodes: string[]): 
   return documents
     .filter((document) => movementCodes.includes(document.movementCode ?? ''))
     .reduce((sum, document) => sum + Number(document.netAmount || 0), 0);
+}
+
+function emptyToUndefined(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function firstDayOfCurrentMonth(): string {

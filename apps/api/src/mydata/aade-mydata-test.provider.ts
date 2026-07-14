@@ -346,11 +346,27 @@ export class AadeMyDataTestProvider implements MyDataProvider {
 
   private parseXmlResponse(responseText: string): unknown {
     try {
-      return this.parser.parse(responseText);
+      const parsed = this.parser.parse(responseText);
+      const serializedXml = serializedXmlResponse(parsed);
+      return serializedXml ? this.parser.parse(serializedXml) : parsed;
     } catch {
       return { rawXml: responseText };
     }
   }
+}
+
+function serializedXmlResponse(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value);
+  if (entries.length !== 1 || entries[0][0].toLowerCase() !== 'string') {
+    return undefined;
+  }
+  const serialized = entries[0][1];
+  return typeof serialized === 'string' && serialized.trimStart().startsWith('<')
+    ? serialized
+    : undefined;
 }
 
 function appendOptionalSearchParam(url: URL, key: string, value: string | undefined): void {

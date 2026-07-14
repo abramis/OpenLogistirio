@@ -217,6 +217,24 @@ Use these when needed:
 .\scripts\windows\update-open-logistirio.ps1
 ```
 
+## Production Compose
+
+Use the separate immutable production images and reverse proxy configuration; do not use the
+development `docker-compose.yml` in production. Copy and complete the production template, then
+start the stack:
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+```
+
+The `migrate` job must complete successfully before the API starts. MySQL and Redis are internal
+services; only the web reverse proxy is published. The API readiness probe checks both dependencies
+at `/api/health/ready`. The `backup` service writes a consistent MySQL dump immediately and then at
+`BACKUP_INTERVAL_SECONDS`, pruning local dumps older than `BACKUP_RETENTION_DAYS`. Backups are kept
+in the named `backup-data` volume; replicate that volume to independent, encrypted storage and perform
+scheduled restore drills. After deployment run `./scripts/production-smoke-check.sh https://your-domain`.
+
 Backups created from the app are stored in the local `backups/` directory and are
 also available for download from the web UI.
 

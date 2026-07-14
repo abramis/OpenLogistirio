@@ -10,7 +10,16 @@ export interface DeclarationWorkpaper {
   title: string;
   periodYear: number;
   periodMonth?: number | null;
+  periodKind: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+  periodStartMonth: number;
+  periodEndMonth: number;
+  periodCloseReviewId?: string | null;
   status: string;
+  notes?: string | null;
+  submittedAt?: string | null;
+  submissionReference?: string | null;
+  submissionDate?: string | null;
+  submissionAttachments?: DeclarationAttachment[] | null;
   totals: {
     salesNet?: number;
     salesVat?: number;
@@ -60,6 +69,11 @@ export interface DeclarationWorkpaper {
   };
 }
 
+export interface DeclarationAttachment {
+  name: string;
+  url: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DeclarationsApiService {
   private readonly http = inject(HttpClient);
@@ -76,6 +90,7 @@ export class DeclarationsApiService {
     clientCompanyId: string;
     year: number;
     month?: number;
+    periodKind?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
   }): Observable<DeclarationWorkpaper> {
     return this.http.post<DeclarationWorkpaper>(
       `${this.baseUrl}/vat-workpaper/generate`,
@@ -90,5 +105,25 @@ export class DeclarationsApiService {
 
   approve(id: string): Observable<DeclarationWorkpaper> {
     return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/workpapers/${id}/approve`, {}, {});
+  }
+
+  submit(
+    id: string,
+    payload: {
+      submissionReference: string;
+      submissionDate: string;
+      attachments?: DeclarationAttachment[];
+      notes?: string;
+    },
+  ): Observable<DeclarationWorkpaper> {
+    return this.http.post<DeclarationWorkpaper>(
+      `${this.baseUrl}/workpapers/${id}/submit`,
+      payload,
+      {},
+    );
+  }
+
+  archive(id: string): Observable<DeclarationWorkpaper> {
+    return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/workpapers/${id}/archive`, {}, {});
   }
 }

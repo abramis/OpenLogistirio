@@ -7,6 +7,7 @@ import {
   ObligationType,
   OfficeObligation,
   Prisma,
+  TaxCalendarRule,
 } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -15,6 +16,8 @@ import { CreateObligationDto } from './dto/create-obligation.dto';
 import { FindObligationsQueryDto } from './dto/find-obligations-query.dto';
 import { GenerateMonthlyObligationsDto } from './dto/generate-monthly-obligations.dto';
 import { UpdateObligationDto } from './dto/update-obligation.dto';
+import { UpsertTaxCalendarOverrideDto } from './dto/upsert-tax-calendar-override.dto';
+import { UpsertTaxCalendarRuleDto } from './dto/upsert-tax-calendar-rule.dto';
 
 @Injectable()
 export class ObligationsService {
@@ -151,31 +154,26 @@ export class ObligationsService {
     });
 
     const createdOrExisting: OfficeObligation[] = [];
+    const rules = await this.taxCalendarRules(tenant);
+    const overrides = await this.prisma.taxCalendarOverride.findMany({
+      where: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        periodYear: dto.year,
+        periodMonth: dto.month,
+      },
+    });
 
     for (const company of companies) {
-      createdOrExisting.push(
-        await this.upsertGeneratedObligation(tenant, company, {
-          type: ObligationType.MYDATA_REVIEW,
-          title: `Έλεγχος myDATA ${formatPeriod(dto.month, dto.year)}`,
-          periodYear: dto.year,
-          periodMonth: dto.month,
-          dueDate: new Date(Date.UTC(dto.year, dto.month, 20)),
-          recurrence: ObligationRecurrence.MONTHLY,
-        }),
-      );
-
-      if (shouldGenerateVatObligation(company, dto.month)) {
+      for (const rule of rules.filter((item) => appliesToCompany(item, company, dto.month))) {
+        const override = overrides.find((item) => item.taxCalendarRuleId === rule.id);
         createdOrExisting.push(
           await this.upsertGeneratedObligation(tenant, company, {
-            type: ObligationType.VAT_RETURN,
-            title: `Περιοδική ΦΠΑ ${formatPeriod(dto.month, dto.year)}`,
+            type: rule.obligationType,
+            title: `${rule.name} ${formatPeriod(dto.month, dto.year)}`,
             periodYear: dto.year,
             periodMonth: dto.month,
-            dueDate: lastDayOfNextMonth(dto.year, dto.month),
-            recurrence:
-              company.accountingCategory === 'DOUBLE_ENTRY'
-                ? ObligationRecurrence.MONTHLY
-                : ObligationRecurrence.QUARTERLY,
+            dueDate: override?.dueDate ?? calculatedDueDate(rule, dto.year, dto.month),
+            recurrence: rule.recurrence,
           }),
         );
       }
@@ -185,6 +183,58 @@ export class ObligationsService {
       generated: createdOrExisting.length,
       obligations: createdOrExisting,
     };
+  }
+
+  async taxCalendarRules(tenant: TenantContext) {
+    const existing = await this.prisma.taxCalendarRule.findMany({
+      where: { accountingOfficeId: tenant.accountingOfficeId },
+      orderBy: { code: 'asc' },
+    });
+    if (existing.length > 0) return existing;
+    await this.prisma.taxCalendarRule.createMany({
+      data: defaultTaxCalendarRules(tenant.accountingOfficeId),
+      skipDuplicates: true,
+    });
+    return this.prisma.taxCalendarRule.findMany({
+      where: { accountingOfficeId: tenant.accountingOfficeId },
+      orderBy: { code: 'asc' },
+    });
+  }
+
+  async upsertTaxCalendarRule(tenant: TenantContext, dto: UpsertTaxCalendarRuleDto) {
+    return this.prisma.taxCalendarRule.upsert({
+      where: {
+        accountingOfficeId_code: { accountingOfficeId: tenant.accountingOfficeId, code: dto.code },
+      },
+      update: { ...dto },
+      create: { accountingOfficeId: tenant.accountingOfficeId, ...dto },
+    });
+  }
+
+  async upsertTaxCalendarOverride(tenant: TenantContext, dto: UpsertTaxCalendarOverrideDto) {
+    const rule = await this.prisma.taxCalendarRule.findFirst({
+      where: { id: dto.taxCalendarRuleId, accountingOfficeId: tenant.accountingOfficeId },
+    });
+    if (!rule) throw new NotFoundException('Tax calendar rule was not found.');
+    return this.prisma.taxCalendarOverride.upsert({
+      where: {
+        taxCalendarRuleId_periodYear_periodMonth: {
+          taxCalendarRuleId: rule.id,
+          periodYear: dto.periodYear,
+          periodMonth: dto.periodMonth,
+        },
+      },
+      update: { dueDate: new Date(dto.dueDate), sourceUrl: dto.sourceUrl, notes: dto.notes },
+      create: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        taxCalendarRuleId: rule.id,
+        periodYear: dto.periodYear,
+        periodMonth: dto.periodMonth,
+        dueDate: new Date(dto.dueDate),
+        sourceUrl: dto.sourceUrl,
+        notes: dto.notes,
+      },
+    });
   }
 
   private async upsertGeneratedObligation(
@@ -308,22 +358,70 @@ export class ObligationsService {
   }
 }
 
-function shouldGenerateVatObligation(company: ClientCompany, month: number): boolean {
-  if (company.vatRegime === 'EXEMPT' || company.vatRegime === 'SMALL_BUSINESS') {
+function appliesToCompany(rule: TaxCalendarRule, company: ClientCompany, month: number): boolean {
+  if (
+    !rule.isActive ||
+    (rule.accountingCategory && rule.accountingCategory !== company.accountingCategory)
+  )
     return false;
-  }
-
-  if (company.accountingCategory === 'DOUBLE_ENTRY') {
-    return true;
-  }
-
-  return month % 3 === 0;
+  if (rule.vatRegime && rule.vatRegime !== company.vatRegime) return false;
+  return !rule.applicableMonths || rule.applicableMonths.split(',').map(Number).includes(month);
 }
 
 function formatPeriod(month: number, year: number): string {
   return `${String(month).padStart(2, '0')}/${year}`;
 }
 
-function lastDayOfNextMonth(year: number, month: number): Date {
-  return new Date(Date.UTC(year, month + 1, 0));
+function calculatedDueDate(rule: TaxCalendarRule, year: number, month: number): Date {
+  const target = new Date(Date.UTC(year, month - 1 + rule.dueMonthOffset, 1));
+  const day =
+    rule.dueDay === 0
+      ? new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+      : Math.min(
+          rule.dueDay,
+          new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate(),
+        );
+  return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), day));
+}
+
+function defaultTaxCalendarRules(
+  accountingOfficeId: string,
+): Prisma.TaxCalendarRuleCreateManyInput[] {
+  return [
+    {
+      accountingOfficeId,
+      code: 'MYDATA_MONTHLY',
+      name: 'Έλεγχος myDATA',
+      obligationType: ObligationType.MYDATA_REVIEW,
+      recurrence: ObligationRecurrence.MONTHLY,
+      dueMonthOffset: 1,
+      dueDay: 20,
+      notes: 'Επιβεβαιώστε την προθεσμία από τις τρέχουσες ανακοινώσεις ΑΑΔΕ.',
+    },
+    {
+      accountingOfficeId,
+      code: 'VAT_MONTHLY',
+      name: 'Περιοδική ΦΠΑ',
+      obligationType: ObligationType.VAT_RETURN,
+      recurrence: ObligationRecurrence.MONTHLY,
+      dueMonthOffset: 1,
+      dueDay: 0,
+      accountingCategory: 'DOUBLE_ENTRY',
+      vatRegime: 'NORMAL',
+      notes: 'Επιβεβαιώστε την προθεσμία από τις τρέχουσες ανακοινώσεις ΑΑΔΕ.',
+    },
+    {
+      accountingOfficeId,
+      code: 'VAT_QUARTERLY',
+      name: 'Περιοδική ΦΠΑ',
+      obligationType: ObligationType.VAT_RETURN,
+      recurrence: ObligationRecurrence.QUARTERLY,
+      dueMonthOffset: 1,
+      dueDay: 0,
+      applicableMonths: '3,6,9,12',
+      accountingCategory: 'SIMPLE_BOOKS',
+      vatRegime: 'NORMAL',
+      notes: 'Επιβεβαιώστε την προθεσμία από τις τρέχουσες ανακοινώσεις ΑΑΔΕ.',
+    },
+  ];
 }

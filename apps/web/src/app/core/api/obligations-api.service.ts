@@ -51,6 +51,46 @@ export interface ObligationFilters {
   dueTo?: string;
 }
 
+export interface TaxCalendarRule {
+  id: string;
+  code: string;
+  name: string;
+  obligationType: string;
+  recurrence: string;
+  dueMonthOffset: number;
+  dueDay: number;
+  applicableMonths?: string | null;
+  accountingCategory?: string | null;
+  vatRegime?: string | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+}
+
+export interface TaxCalendarRulePayload {
+  code: string;
+  name: string;
+  obligationType: string;
+  recurrence: string;
+  dueMonthOffset: number;
+  dueDay: number;
+  applicableMonths?: string;
+  accountingCategory?: string;
+  vatRegime?: string;
+  sourceUrl?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export interface TaxCalendarOverridePayload {
+  taxCalendarRuleId: string;
+  periodYear: number;
+  periodMonth: number;
+  dueDate: string;
+  sourceUrl?: string;
+  notes?: string;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -86,6 +126,23 @@ export class ObligationsApiService {
       `${this.baseUrl}/generate-monthly`,
       { year, month },
       {},
+    );
+  }
+
+  taxCalendarRules(): Observable<TaxCalendarRule[]> {
+    return this.http.get<TaxCalendarRule[]>(`${this.baseUrl}/tax-calendar/rules`);
+  }
+
+  upsertTaxCalendarRule(payload: TaxCalendarRulePayload): Observable<TaxCalendarRule> {
+    return this.http.post<TaxCalendarRule>(`${this.baseUrl}/tax-calendar/rules`, payload);
+  }
+
+  upsertTaxCalendarOverride(
+    payload: TaxCalendarOverridePayload,
+  ): Observable<{ id: string; dueDate: string }> {
+    return this.http.post<{ id: string; dueDate: string }>(
+      `${this.baseUrl}/tax-calendar/overrides`,
+      payload,
     );
   }
 }

@@ -400,6 +400,39 @@ describe('AccountingService', () => {
       }),
     );
   });
+
+  it('previews balanced year-end closing and retained-result entries', async () => {
+    const prisma = {
+      clientCompany: { findFirst: jest.fn().mockResolvedValue({ id: 'company-1' }) },
+      journalEntryLine: {
+        findMany: jest.fn().mockResolvedValue([
+          line('70.00', 'Έσοδα πωλήσεων', ChartAccountType.REVENUE, NormalBalance.CREDIT, 0, 150),
+          line('20.00', 'Αγορές και έξοδα', ChartAccountType.EXPENSE, NormalBalance.DEBIT, 50, 0),
+        ]),
+      },
+      chartAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          account('82.00', 'Αποτελέσματα χρήσης', ChartAccountType.EQUITY, NormalBalance.CREDIT),
+          account('40.00', 'Κεφάλαιο', ChartAccountType.EQUITY, NormalBalance.CREDIT),
+        ]),
+      },
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new AccountingService(prisma as unknown as PrismaService);
+
+    const preview = await service.yearEndPreview(tenant, {
+      clientCompanyId: 'company-1',
+      fiscalYear: 2026,
+      resultAccountCode: '82.00',
+      retainedEarningsAccountCode: '40.00',
+    });
+
+    expect(preview.result).toEqual({ revenue: 150, expenses: 50, netResult: 100 });
+    expect(preview.closingEntry).toEqual(expect.objectContaining({ debit: 50, credit: 150 }));
+    expect(preview.transferEntry).toEqual(
+      expect.objectContaining({ resultDebit: 100, retainedEarningsCredit: 100 }),
+    );
+  });
 });
 
 function account(code: string, name: string, type: ChartAccountType, normalBalance: NormalBalance) {

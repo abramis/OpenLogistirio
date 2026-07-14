@@ -6,6 +6,7 @@ import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { ClientSetupService } from './client-setup.service';
 import { ApplyClientSetupTemplateDto } from './dto/apply-client-setup-template.dto';
+import { UpsertMyDataClassificationProfileDto } from './dto/upsert-mydata-classification-profile.dto';
 
 @ApiTags('client-setup')
 @Controller('companies/:clientCompanyId/setup')
@@ -33,5 +34,23 @@ export class ClientSetupController {
     @Body() dto: ApplyClientSetupTemplateDto,
   ) {
     return this.clientSetupService.applyTemplate(tenant, clientCompanyId, dto);
+  }
+
+  @Get('mydata-classification-profiles')
+  findMyDataClassificationProfiles(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('clientCompanyId') clientCompanyId: string,
+  ) {
+    return this.clientSetupService.findMyDataClassificationProfiles(tenant, clientCompanyId);
+  }
+
+  @Post('mydata-classification-profiles')
+  @Roles(...OFFICE_WRITE_ROLES)
+  upsertMyDataClassificationProfile(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('clientCompanyId') clientCompanyId: string,
+    @Body() dto: UpsertMyDataClassificationProfileDto,
+  ) {
+    return this.clientSetupService.upsertMyDataClassificationProfile(tenant, clientCompanyId, dto);
   }
 }

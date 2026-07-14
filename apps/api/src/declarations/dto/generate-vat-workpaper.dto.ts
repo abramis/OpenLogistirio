@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { DeclarationWorkpaperPeriodKind } from '@prisma/client';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class GenerateVatWorkpaperDto {
   @ApiProperty()
@@ -18,4 +19,12 @@ export class GenerateVatWorkpaperDto {
   @Min(1)
   @Max(12)
   month?: number;
+
+  @ApiPropertyOptional({
+    enum: DeclarationWorkpaperPeriodKind,
+    default: DeclarationWorkpaperPeriodKind.MONTHLY,
+  })
+  @IsOptional()
+  @IsEnum(DeclarationWorkpaperPeriodKind)
+  periodKind?: DeclarationWorkpaperPeriodKind;
 }

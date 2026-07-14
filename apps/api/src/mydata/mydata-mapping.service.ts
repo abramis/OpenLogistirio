@@ -4,8 +4,17 @@ import { DocumentType, MyDataTransmissionMode, Prisma } from '@prisma/client';
 type DocumentWithCompany = Prisma.DocumentGetPayload<{
   include: {
     clientCompany: true;
+    lines: true;
+    payments: true;
   };
 }>;
+type MappableDocument = Omit<
+  DocumentWithCompany,
+  'lines' | 'payments' | 'importBatchId' | 'replacesDocumentId' | 'correctsDocumentId'
+> & {
+  lines?: InvoiceLine[];
+  payments?: PaymentLine[];
+};
 
 @Injectable()
 export class MyDataMappingService {
@@ -13,16 +22,15 @@ export class MyDataMappingService {
   // (March 2026) and its SendInvoices/InvoicesDoc flow. Before production use,
   // re-check the latest official AADE myDATA ERP technical specifications, XSDs,
   // authentication rules, and test environment. Never store TAXISnet passwords.
-  mapDocumentToXml(document: DocumentWithCompany): string {
+  mapDocumentToXml(document: MappableDocument): string {
     return this.mapDocumentToAadeInvoicesDocXml(document);
   }
 
-  mapDocumentToAadeInvoicesDocXml(document: DocumentWithCompany): string {
+  mapDocumentToAadeInvoicesDocXml(document: MappableDocument): string {
     const invoiceType = mapDocumentTypeToAadeInvoiceType(
       document.documentType,
       document.correlatedInvoiceMark,
     );
-    const vatCategory = mapVatCategory(document.vatCategory);
     const netAmount = document.netAmount.toFixed(2);
     const vatAmount = document.vatAmount.toFixed(2);
     const totalAmount = document.totalAmount.toFixed(2);
@@ -36,13 +44,18 @@ export class MyDataMappingService {
       `      <vatNumber>${escapeXml(document.clientCompany.vatNumber)}</vatNumber>`,
       '      <country>GR</country>',
       '      <branch>0</branch>',
-      `      <name>${escapeXml(document.clientCompany.legalName)}</name>`,
+      // AADE rejects issuer names for Greek VAT numbers (validation code 219).
       '    </issuer>',
       '    <counterpart>',
       `      <vatNumber>${escapeXml(document.counterpartyVatNumber ?? '000000000')}</vatNumber>`,
       '      <country>GR</country>',
       '      <branch>0</branch>',
-      `      <name>${escapeXml(document.counterpartyName ?? 'Unknown Counterparty')}</name>`,
+      // AADE rejects counterpart names for Greek VAT numbers (validation code 220).
+      ...(isGreekVatNumber(document.counterpartyVatNumber)
+        ? []
+        : document.counterpartyName
+          ? [`      <name>${escapeXml(document.counterpartyName)}</name>`]
+          : []),
       '    </counterpart>',
       '    <invoiceHeader>',
       `      <series>${escapeXml(document.series ?? '')}</series>`,
@@ -56,26 +69,8 @@ export class MyDataMappingService {
           ]
         : []),
       '    </invoiceHeader>',
-      '    <paymentMethods>',
-      '      <paymentMethodDetails>',
-      `        <type>${document.paymentMethodType}</type>`,
-      `        <amount>${totalAmount}</amount>`,
-      '      </paymentMethodDetails>',
-      '    </paymentMethods>',
-      '    <invoiceDetails>',
-      '      <lineNumber>1</lineNumber>',
-      `      <netValue>${netAmount}</netValue>`,
-      `      <vatCategory>${vatCategory}</vatCategory>`,
-      `      <vatAmount>${vatAmount}</vatAmount>`,
-      ...(document.vatExemptionCategory
-        ? [`      <vatExemptionCategory>${document.vatExemptionCategory}</vatExemptionCategory>`]
-        : []),
-      '      <incomeClassification>',
-      '        <icls:classificationType>E3_561_001</icls:classificationType>',
-      '        <icls:classificationCategory>category1_1</icls:classificationCategory>',
-      `        <icls:amount>${netAmount}</icls:amount>`,
-      '      </incomeClassification>',
-      '    </invoiceDetails>',
+      ...paymentMethodsLines(document),
+      ...invoiceDetailsLines(document, invoiceType),
       ...taxesTotals,
       '    <invoiceSummary>',
       `      <totalNetValue>${netAmount}</totalNetValue>`,
@@ -86,29 +81,21 @@ export class MyDataMappingService {
       `      <totalOtherTaxesAmount>${document.otherTaxesAmount.toFixed(2)}</totalOtherTaxesAmount>`,
       `      <totalDeductionsAmount>${document.deductionsAmount.toFixed(2)}</totalDeductionsAmount>`,
       `      <totalGrossValue>${totalAmount}</totalGrossValue>`,
-      '      <incomeClassification>',
-      '        <icls:classificationType>E3_561_001</icls:classificationType>',
-      '        <icls:classificationCategory>category1_1</icls:classificationCategory>',
-      `        <icls:amount>${netAmount}</icls:amount>`,
-      '      </incomeClassification>',
+      ...summaryIncomeClassificationLines(document),
       '    </invoiceSummary>',
       '  </invoice>',
       '</InvoicesDoc>',
     ].join('\n');
   }
 
-  mapPurchaseDocumentToExpenseClassificationXml(document: DocumentWithCompany): string {
+  mapPurchaseDocumentToExpenseClassificationXml(document: MappableDocument): string {
     if (document.documentType !== DocumentType.PURCHASE_INVOICE) {
       throw new BadRequestException(
         'Expense classification preparation supports purchase invoices only.',
       );
     }
 
-    const netAmount = document.netAmount.toFixed(2);
-    const vatAmount = document.vatAmount.toFixed(2);
     const mark = document.myDataMark?.trim();
-    const vatCategory = mapVatCategory(document.vatCategory);
-    const vatClassificationType = mapExpenseVatClassificationType(vatCategory);
 
     if (!mark) {
       throw new BadRequestException(
@@ -122,31 +109,7 @@ export class MyDataMappingService {
       '  <expensesInvoiceClassification>',
       `    <invoiceMark>${escapeXml(mark)}</invoiceMark>`,
       ...entityVatNumberLines(document),
-      '    <invoicesExpensesClassificationDetails>',
-      '      <lineNumber>1</lineNumber>',
-      '      <expensesClassificationDetailData>',
-      '        <classificationType>E3_102_001</classificationType>',
-      '        <classificationCategory>category2_4</classificationCategory>',
-      `        <amount>${netAmount}</amount>`,
-      '        <id>1</id>',
-      '      </expensesClassificationDetailData>',
-      ...(vatClassificationType
-        ? [
-            '      <expensesClassificationDetailData>',
-            `        <classificationType>${vatClassificationType}</classificationType>`,
-            `        <amount>${netAmount}</amount>`,
-            `        <vatAmount>${vatAmount}</vatAmount>`,
-            `        <vatCategory>${vatCategory}</vatCategory>`,
-            ...(document.vatExemptionCategory
-              ? [
-                  `        <vatExemptionCategory>${document.vatExemptionCategory}</vatExemptionCategory>`,
-                ]
-              : []),
-            '        <id>2</id>',
-            '      </expensesClassificationDetailData>',
-          ]
-        : []),
-      '    </invoicesExpensesClassificationDetails>',
+      ...expenseClassificationLines(document),
       '    <classificationPostMode>1</classificationPostMode>',
       '  </expensesInvoiceClassification>',
       '</ExpensesClassificationsDoc>',
@@ -178,6 +141,166 @@ function mapExpenseVatClassificationType(vatCategory: string): string | undefine
   return classificationType;
 }
 
+function invoiceDetailsLines(document: MappableDocument, invoiceType: string): string[] {
+  return documentLines(document).flatMap((line) => {
+    const classificationType = line.incomeClassificationType ?? 'E3_561_001';
+    const classificationCategory = line.incomeClassificationCategory ?? 'category1_1';
+    return [
+      '    <invoiceDetails>',
+      `      <lineNumber>${line.lineNumber}</lineNumber>`,
+      ...(line.itemCode ? [`      <itemCode>${escapeXml(line.itemCode)}</itemCode>`] : []),
+      // AADE rejects itemDescr for correlated credit notes (invoice type 5.1).
+      ...(invoiceType !== '5.1' && line.description
+        ? [`      <itemDescr>${escapeXml(line.description)}</itemDescr>`]
+        : []),
+      ...(line.quantity !== null && line.quantity !== undefined
+        ? [`      <quantity>${line.quantity.toString()}</quantity>`]
+        : []),
+      ...(line.measurementUnit
+        ? [`      <measurementUnit>${line.measurementUnit}</measurementUnit>`]
+        : []),
+      `      <netValue>${money(line.netAmount)}</netValue>`,
+      `      <vatCategory>${mapVatCategory(line.vatCategory)}</vatCategory>`,
+      `      <vatAmount>${money(line.vatAmount)}</vatAmount>`,
+      ...(line.vatExemptionCategory
+        ? [`      <vatExemptionCategory>${line.vatExemptionCategory}</vatExemptionCategory>`]
+        : []),
+      ...(line.discountOption !== null && line.discountOption !== undefined
+        ? [`      <discountOption>${line.discountOption}</discountOption>`]
+        : []),
+      ...lineTaxDetails(line),
+      '      <incomeClassification>',
+      `        <icls:classificationType>${escapeXml(classificationType)}</icls:classificationType>`,
+      `        <icls:classificationCategory>${escapeXml(classificationCategory)}</icls:classificationCategory>`,
+      `        <icls:amount>${money(line.netAmount)}</icls:amount>`,
+      '      </incomeClassification>',
+      '    </invoiceDetails>',
+    ];
+  });
+}
+
+function paymentMethodsLines(document: MappableDocument): string[] {
+  return [
+    '    <paymentMethods>',
+    ...documentPayments(document).flatMap((payment) => [
+      '      <paymentMethodDetails>',
+      `        <type>${payment.type}</type>`,
+      `        <amount>${money(payment.amount)}</amount>`,
+      ...(payment.paymentMethodInfo
+        ? [`        <paymentMethodInfo>${escapeXml(payment.paymentMethodInfo)}</paymentMethodInfo>`]
+        : []),
+      ...(payment.transactionId
+        ? [`        <transactionId>${escapeXml(payment.transactionId)}</transactionId>`]
+        : []),
+      ...(payment.tid ? [`        <tid>${escapeXml(payment.tid)}</tid>`] : []),
+      ...(payment.providerSigningAuthor && payment.providerSignature
+        ? [
+            '        <ProvidersSignature>',
+            `          <SigningAuthor>${escapeXml(payment.providerSigningAuthor)}</SigningAuthor>`,
+            `          <Signature>${escapeXml(payment.providerSignature)}</Signature>`,
+            '        </ProvidersSignature>',
+          ]
+        : []),
+      ...(payment.ecrSigningAuthor && payment.ecrSessionNumber
+        ? [
+            '        <ECRToken>',
+            `          <SigningAuthor>${escapeXml(payment.ecrSigningAuthor)}</SigningAuthor>`,
+            `          <SessionNumber>${escapeXml(payment.ecrSessionNumber)}</SessionNumber>`,
+            '        </ECRToken>',
+          ]
+        : []),
+      '      </paymentMethodDetails>',
+    ]),
+    '    </paymentMethods>',
+  ];
+}
+
+function lineTaxDetails(line: InvoiceLine): string[] {
+  return [
+    ...(positive(line.withheldAmount)
+      ? [
+          `      <withheldAmount>${money(line.withheldAmount)}</withheldAmount>`,
+          `      <withheldPercentCategory>${line.withheldCategory}</withheldPercentCategory>`,
+        ]
+      : []),
+    ...(positive(line.stampDutyAmount)
+      ? [
+          `      <stampDutyAmount>${money(line.stampDutyAmount)}</stampDutyAmount>`,
+          `      <stampDutyPercentCategory>${line.stampDutyCategory}</stampDutyPercentCategory>`,
+        ]
+      : []),
+    ...(positive(line.feesAmount)
+      ? [
+          `      <feesAmount>${money(line.feesAmount)}</feesAmount>`,
+          `      <feesPercentCategory>${line.feesCategory}</feesPercentCategory>`,
+        ]
+      : []),
+    ...(positive(line.otherTaxesAmount)
+      ? [
+          `      <otherTaxesPercentCategory>${line.otherTaxesCategory}</otherTaxesPercentCategory>`,
+          `      <otherTaxesAmount>${money(line.otherTaxesAmount)}</otherTaxesAmount>`,
+        ]
+      : []),
+    ...(positive(line.deductionsAmount)
+      ? [`      <deductionsAmount>${money(line.deductionsAmount)}</deductionsAmount>`]
+      : []),
+  ];
+}
+
+function summaryIncomeClassificationLines(document: MappableDocument): string[] {
+  const classifications = new Map<string, { type: string; category: string; amount: number }>();
+  for (const line of documentLines(document)) {
+    const type = line.incomeClassificationType ?? 'E3_561_001';
+    const category = line.incomeClassificationCategory ?? 'category1_1';
+    const key = `${type}|${category}`;
+    const current = classifications.get(key) ?? { type, category, amount: 0 };
+    current.amount += Number(line.netAmount);
+    classifications.set(key, current);
+  }
+  return [...classifications.values()].flatMap((classification) => [
+    '      <incomeClassification>',
+    `        <icls:classificationType>${escapeXml(classification.type)}</icls:classificationType>`,
+    `        <icls:classificationCategory>${escapeXml(classification.category)}</icls:classificationCategory>`,
+    `        <icls:amount>${classification.amount.toFixed(2)}</icls:amount>`,
+    '      </incomeClassification>',
+  ]);
+}
+
+function expenseClassificationLines(document: MappableDocument): string[] {
+  return documentLines(document).flatMap((line) => {
+    const vatCategory = mapVatCategory(line.vatCategory);
+    const vatClassificationType =
+      line.vatClassificationType ?? mapExpenseVatClassificationType(vatCategory);
+    return [
+      '    <invoicesExpensesClassificationDetails>',
+      `      <lineNumber>${line.lineNumber}</lineNumber>`,
+      '      <expensesClassificationDetailData>',
+      `        <classificationType>${escapeXml(line.expenseClassificationType ?? 'E3_102_001')}</classificationType>`,
+      `        <classificationCategory>${escapeXml(line.expenseClassificationCategory ?? 'category2_4')}</classificationCategory>`,
+      `        <amount>${money(line.netAmount)}</amount>`,
+      '        <id>1</id>',
+      '      </expensesClassificationDetailData>',
+      ...(vatClassificationType
+        ? [
+            '      <expensesClassificationDetailData>',
+            `        <classificationType>${escapeXml(vatClassificationType)}</classificationType>`,
+            `        <amount>${money(line.netAmount)}</amount>`,
+            `        <vatAmount>${money(line.vatAmount)}</vatAmount>`,
+            `        <vatCategory>${vatCategory}</vatCategory>`,
+            ...(line.vatExemptionCategory
+              ? [
+                  `        <vatExemptionCategory>${line.vatExemptionCategory}</vatExemptionCategory>`,
+                ]
+              : []),
+            '        <id>2</id>',
+            '      </expensesClassificationDetailData>',
+          ]
+        : []),
+      '    </invoicesExpensesClassificationDetails>',
+    ];
+  });
+}
+
 function mapDocumentTypeToAadeInvoiceType(
   documentType: DocumentType,
   correlatedInvoiceMark?: string | null,
@@ -199,15 +322,108 @@ function mapDocumentTypeToAadeInvoiceType(
   );
 }
 
-function taxesTotalsLines(document: DocumentWithCompany): string[] {
-  const taxes: Array<{ type: number; category?: number | null; amount: Prisma.Decimal }> = [
-    { type: 1, category: document.withheldCategory, amount: document.withheldAmount },
-    { type: 2, category: document.feesCategory, amount: document.feesAmount },
-    { type: 3, category: document.otherTaxesCategory, amount: document.otherTaxesAmount },
-    { type: 4, category: document.stampDutyCategory, amount: document.stampDutyAmount },
-    { type: 5, amount: document.deductionsAmount },
+type InvoiceLine = {
+  lineNumber: number;
+  itemCode?: string | null;
+  description?: string | null;
+  quantity?: Prisma.Decimal | null;
+  measurementUnit?: number | null;
+  discountOption?: boolean | null;
+  netAmount: Prisma.Decimal;
+  vatAmount: Prisma.Decimal;
+  vatCategory: string;
+  vatExemptionCategory?: number | null;
+  withheldAmount: Prisma.Decimal;
+  withheldCategory?: number | null;
+  feesAmount: Prisma.Decimal;
+  feesCategory?: number | null;
+  stampDutyAmount: Prisma.Decimal;
+  stampDutyCategory?: number | null;
+  otherTaxesAmount: Prisma.Decimal;
+  otherTaxesCategory?: number | null;
+  deductionsAmount: Prisma.Decimal;
+  incomeClassificationType?: string | null;
+  incomeClassificationCategory?: string | null;
+  expenseClassificationType?: string | null;
+  expenseClassificationCategory?: string | null;
+  vatClassificationType?: string | null;
+};
+
+type PaymentLine = {
+  paymentNumber: number;
+  type: number;
+  amount: Prisma.Decimal;
+  paymentMethodInfo?: string | null;
+  transactionId?: string | null;
+  tid?: string | null;
+  providerSigningAuthor?: string | null;
+  providerSignature?: string | null;
+  ecrSigningAuthor?: string | null;
+  ecrSessionNumber?: string | null;
+};
+
+function documentPayments(document: MappableDocument): PaymentLine[] {
+  if (document.payments?.length) {
+    return document.payments;
+  }
+  return [
+    {
+      paymentNumber: 1,
+      type: document.paymentMethodType,
+      amount: document.totalAmount,
+    },
   ];
-  const populated = taxes.filter((tax) => tax.amount.greaterThan(0));
+}
+
+function documentLines(document: MappableDocument): InvoiceLine[] {
+  if (document.lines?.length) {
+    return document.lines;
+  }
+  return [
+    {
+      lineNumber: 1,
+      netAmount: document.netAmount,
+      vatAmount: document.vatAmount,
+      vatCategory: document.vatCategory,
+      vatExemptionCategory: document.vatExemptionCategory,
+      withheldAmount: document.withheldAmount,
+      withheldCategory: document.withheldCategory,
+      feesAmount: document.feesAmount,
+      feesCategory: document.feesCategory,
+      stampDutyAmount: document.stampDutyAmount,
+      stampDutyCategory: document.stampDutyCategory,
+      otherTaxesAmount: document.otherTaxesAmount,
+      otherTaxesCategory: document.otherTaxesCategory,
+      deductionsAmount: document.deductionsAmount,
+    },
+  ];
+}
+
+function taxesTotalsLines(document: MappableDocument): string[] {
+  const populated = documentLines(document)
+    .flatMap((line) => [
+      {
+        type: 1,
+        category: line.withheldCategory,
+        amount: line.withheldAmount,
+        netAmount: line.netAmount,
+      },
+      { type: 2, category: line.feesCategory, amount: line.feesAmount, netAmount: line.netAmount },
+      {
+        type: 3,
+        category: line.otherTaxesCategory,
+        amount: line.otherTaxesAmount,
+        netAmount: line.netAmount,
+      },
+      {
+        type: 4,
+        category: line.stampDutyCategory,
+        amount: line.stampDutyAmount,
+        netAmount: line.netAmount,
+      },
+      { type: 5, amount: line.deductionsAmount, netAmount: line.netAmount },
+    ])
+    .filter((tax) => tax.amount.greaterThan(0));
 
   if (populated.length === 0) {
     return [];
@@ -219,13 +435,21 @@ function taxesTotalsLines(document: DocumentWithCompany): string[] {
       '      <taxes>',
       `        <taxType>${tax.type}</taxType>`,
       ...(tax.category ? [`        <taxCategory>${tax.category}</taxCategory>`] : []),
-      `        <underlyingValue>${document.netAmount.toFixed(2)}</underlyingValue>`,
+      `        <underlyingValue>${tax.netAmount.toFixed(2)}</underlyingValue>`,
       `        <taxAmount>${tax.amount.toFixed(2)}</taxAmount>`,
       `        <id>${index + 1}</id>`,
       '      </taxes>',
     ]),
     '    </taxesTotals>',
   ];
+}
+
+function money(value: Prisma.Decimal): string {
+  return value.toFixed(2);
+}
+
+function positive(value: Prisma.Decimal): boolean {
+  return value.greaterThan(0);
 }
 
 function mapVatCategory(vatCategory: string): string {
@@ -244,6 +468,10 @@ function mapVatCategory(vatCategory: string): string {
   return categories[vatCategory] ?? vatCategory;
 }
 
+function isGreekVatNumber(value: string | null | undefined): boolean {
+  return /^\d{9}$/.test(value?.trim() ?? '');
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -253,7 +481,7 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function entityVatNumberLines(document: DocumentWithCompany): string[] {
+function entityVatNumberLines(document: MappableDocument): string[] {
   if (document.clientCompany.myDataMode !== MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED) {
     return [];
   }

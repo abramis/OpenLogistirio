@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: open_logistirio_ci
+          MYSQL_USER: openlog
+          MYSQL_PASSWORD: openlog_password
+          MYSQL_ROOT_PASSWORD: root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uopenlog -popenlog_password --silent"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: mysql://openlog:openlog_password@127.0.0.1:3306/open_logistirio_ci
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_ACCESS_SECRET: ci-access-secret-at-least-16-characters
+      JWT_REFRESH_SECRET: ci-refresh-secret-at-least-16-characters
+      FRONTEND_ORIGIN: http://localhost:4200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - run: npm run prisma:deploy --workspace=@open-logistirio/api
+      - run: npm run lint --workspace=@open-logistirio/api
+      - run: npm run lint --workspace=@open-logistirio/web
+      - run: npm test --workspace=@open-logistirio/api -- --runInBand
+      - run: npm test --workspace=@open-logistirio/web -- --watch=false --browsers=ChromeHeadless
+      - run: npm run build --workspace=@open-logistirio/api
+      - run: npm run build --workspace=@open-logistirio/web

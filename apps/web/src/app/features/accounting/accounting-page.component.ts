@@ -14,6 +14,7 @@ import {
   TrialBalanceRow,
   UnpostedAccountingDocument,
   VatReconciliationRow,
+  YearEndPreview,
 } from '../../core/api/accounting-api.service';
 import { ClientCompany, CompaniesApiService } from '../../core/api/companies-api.service';
 import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-api.service';
@@ -122,6 +123,29 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
       </article>
     </section>
 
+    <section class="table-section" *ngIf="statements$ | async as statements">
+      <div class="section-head">
+        <h2>Αναλυτικές οικονομικές καταστάσεις</h2>
+        <button class="btn btn-secondary btn-sm" type="button" (click)="exportFinancialStatements()">
+          <span class="material-symbols-outlined">download</span> CSV
+        </button>
+      </div>
+      <div class="financial-statements-detail">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th colspan="5">Κατάσταση αποτελεσμάτων</th></tr><tr><th>Λογαριασμός</th><th>Τύπος</th><th class="tr">Χρέωση</th><th class="tr">Πίστωση</th><th class="tr">Υπόλοιπο</th></tr></thead>
+            <tbody><tr *ngFor="let row of statements.incomeStatement.rows"><td>{{ row.code }} - {{ row.name }}</td><td>{{ row.type }}</td><td class="tr">{{ row.debit | number: '1.2-2' }}</td><td class="tr">{{ row.credit | number: '1.2-2' }}</td><td class="tr">{{ row.normalBalanceAmount | number: '1.2-2' }}</td></tr></tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th colspan="5">Ισολογισμός</th></tr><tr><th>Λογαριασμός</th><th>Τύπος</th><th class="tr">Χρέωση</th><th class="tr">Πίστωση</th><th class="tr">Υπόλοιπο</th></tr></thead>
+            <tbody><tr *ngFor="let row of statements.balanceSheet.rows"><td>{{ row.code }} - {{ row.name }}</td><td>{{ row.type }}</td><td class="tr">{{ row.debit | number: '1.2-2' }}</td><td class="tr">{{ row.credit | number: '1.2-2' }}</td><td class="tr">{{ row.normalBalanceAmount | number: '1.2-2' }}</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section class="coverage-grid" *ngIf="coverage$ | async as coverage">
       <article class="card statement">
         <span>Παραστατικά</span>
@@ -143,6 +167,43 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
         <span>Coverage</span>
         <strong>{{ coverage.postedRatio | number: '1.0-2' }}%</strong>
       </article>
+    </section>
+
+    <section class="card year-end-section">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title"><span class="material-symbols-outlined">event_busy</span> Κλείσιμο χρήσης</h2>
+          <p class="card-subtitle">Preview κλεισίματος εσόδων/εξόδων και μεταφοράς αποτελέσματος. Δεν κλειδώνει περιόδους.</p>
+        </div>
+      </div>
+      <div class="card-body year-end-controls">
+        <label>Χρήση<input [(ngModel)]="yearEndFiscalYear" type="number" min="2000" max="2200" /></label>
+        <label>
+          Λογαριασμός αποτελέσματος
+          <select [(ngModel)]="yearEndResultAccountCode"><option value="">Επιλογή</option><option *ngFor="let account of latestAccounts" [value]="account.code">{{ account.code }} - {{ account.name }}</option></select>
+        </label>
+        <label>
+          Μεταφορά σε καθαρή θέση
+          <select [(ngModel)]="yearEndRetainedEarningsAccountCode"><option value="">Επιλογή</option><option *ngFor="let account of latestAccounts" [value]="account.code">{{ account.code }} - {{ account.name }}</option></select>
+        </label>
+        <button class="btn btn-secondary" type="button" [disabled]="!canRunYearEnd() || busy" (click)="previewYearEnd()"><span class="material-symbols-outlined">visibility</span> Preview</button>
+        <button class="btn btn-primary" type="button" [disabled]="!yearEndPreview || yearEndPreview.alreadyClosed || !canRunYearEnd() || busy" (click)="closeYearEnd()"><span class="material-symbols-outlined">task_alt</span> Καταχώριση κλεισίματος</button>
+      </div>
+      <div class="card-body year-end-preview" *ngIf="yearEndPreview">
+        <div class="year-end-result">
+          <span>Έσοδα <strong>{{ yearEndPreview.result.revenue | number: '1.2-2' }}</strong></span>
+          <span>Έξοδα <strong>{{ yearEndPreview.result.expenses | number: '1.2-2' }}</strong></span>
+          <span>Αποτέλεσμα <strong [class.credit]="yearEndPreview.result.netResult >= 0">{{ yearEndPreview.result.netResult | number: '1.2-2' }}</strong></span>
+          <span *ngIf="yearEndPreview.alreadyClosed" class="diff">Υπάρχει ήδη closing entry.</span>
+        </div>
+        <small>Κλείσιμο: {{ yearEndPreview.closingEntry.reference }} · Μεταφορά: {{ yearEndPreview.transferEntry?.reference || 'Δεν απαιτείται' }}</small>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Λογαριασμός</th><th>Τύπος</th><th class="tr">Χρέωση κλεισίματος</th><th class="tr">Πίστωση κλεισίματος</th></tr></thead>
+            <tbody><tr *ngFor="let line of yearEndPreview.incomeRows"><td>{{ line.accountCode }} - {{ line.accountName }}</td><td>{{ line.type }}</td><td class="tr">{{ line.debit | number: '1.2-2' }}</td><td class="tr">{{ line.credit | number: '1.2-2' }}</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section class="table-section">
@@ -687,6 +748,19 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
         gap: 12px;
       }
 
+      .year-end-section { margin-bottom: 16px; }
+      .year-end-controls {
+        display: grid;
+        grid-template-columns: 120px minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
+        gap: 12px;
+        align-items: end;
+      }
+      .year-end-preview { display: grid; gap: 12px; }
+      .year-end-result { display: flex; flex-wrap: wrap; gap: 18px; }
+      .year-end-result span { display: grid; gap: 3px; color: var(--muted); font-size: 0.78rem; }
+      .year-end-result strong { color: var(--text); font-size: 1rem; }
+      .financial-statements-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
       .manual-entry {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -733,10 +807,12 @@ import { DocumentListItem, DocumentsApiService } from '../../core/api/documents-
 
       @media (max-width: 980px) {
         .toolbar,
+        .year-end-controls,
         .metrics,
         .statement-grid,
         .coverage-grid,
         .workspace,
+        .financial-statements-detail,
         .post-panel,
         .manual-entry {
           grid-template-columns: 1fr;
@@ -766,6 +842,15 @@ export class AccountingPageComponent {
       this.latestAccounts = accounts;
       if (this.accountCode && !accounts.some((account) => account.code === this.accountCode)) {
         this.accountCode = '';
+      }
+      if (!this.yearEndResultAccountCode && accounts.some((account) => account.code === '82.00')) {
+        this.yearEndResultAccountCode = '82.00';
+      }
+      if (
+        !this.yearEndRetainedEarningsAccountCode &&
+        accounts.some((account) => account.code === '40.00')
+      ) {
+        this.yearEndRetainedEarningsAccountCode = '40.00';
       }
     }),
   );
@@ -871,6 +956,10 @@ export class AccountingPageComponent {
   debitAccountCode = '20.00';
   creditAccountCode = '50.00';
   manualAmount = 0;
+  yearEndFiscalYear = new Date().getFullYear();
+  yearEndResultAccountCode = '';
+  yearEndRetainedEarningsAccountCode = '';
+  yearEndPreview: YearEndPreview | null = null;
   latestAccounts: ChartAccount[] = [];
   latestPostingRules: DocumentPostingRule[] = [];
   latestCoverage: AccountingCoverage = emptyCoverage();
@@ -891,6 +980,65 @@ export class AccountingPageComponent {
 
   reloadAll(): void {
     this.reload$.next();
+  }
+
+  canRunYearEnd(): boolean {
+    return (
+      Boolean(this.clientCompanyId) &&
+      Boolean(this.yearEndResultAccountCode) &&
+      Boolean(this.yearEndRetainedEarningsAccountCode) &&
+      this.yearEndResultAccountCode !== this.yearEndRetainedEarningsAccountCode
+    );
+  }
+
+  previewYearEnd(): void {
+    if (!this.canRunYearEnd()) return;
+    this.busy = true;
+    this.accountingApi
+      .yearEndPreview({
+        clientCompanyId: this.clientCompanyId,
+        fiscalYear: Number(this.yearEndFiscalYear),
+        resultAccountCode: this.yearEndResultAccountCode,
+        retainedEarningsAccountCode: this.yearEndRetainedEarningsAccountCode,
+      })
+      .subscribe({
+        next: (preview) => {
+          this.yearEndPreview = preview;
+          this.message = preview.alreadyClosed
+            ? 'Υπάρχει ήδη καταχωρισμένο κλείσιμο για αυτή τη χρήση.'
+            : 'Το preview κλεισίματος είναι έτοιμο.';
+          this.busy = false;
+        },
+        error: () => {
+          this.message = 'Το preview κλεισίματος δεν ολοκληρώθηκε.';
+          this.busy = false;
+        },
+      });
+  }
+
+  closeYearEnd(): void {
+    if (!this.canRunYearEnd() || !this.yearEndPreview) return;
+    if (!window.confirm(`Να καταχωριστεί το κλείσιμο χρήσης ${this.yearEndFiscalYear};`)) return;
+    this.busy = true;
+    this.accountingApi
+      .closeYearEnd({
+        clientCompanyId: this.clientCompanyId,
+        fiscalYear: Number(this.yearEndFiscalYear),
+        resultAccountCode: this.yearEndResultAccountCode,
+        retainedEarningsAccountCode: this.yearEndRetainedEarningsAccountCode,
+      })
+      .subscribe({
+        next: (result) => {
+          this.yearEndPreview = result.preview;
+          this.message = `Καταχωρίστηκε το closing entry ${result.closingEntry.entryNumber}.`;
+          this.busy = false;
+          this.reloadAll();
+        },
+        error: () => {
+          this.message = 'Το κλείσιμο χρήσης δεν ολοκληρώθηκε.';
+          this.busy = false;
+        },
+      });
   }
 
   seedChart(): void {
@@ -1062,6 +1210,26 @@ export class AccountingPageComponent {
     );
   }
 
+  exportFinancialStatements(): void {
+    const rows = [
+      ['section', 'accountCode', 'accountName', 'type', 'debit', 'credit', 'normalBalanceAmount'],
+      ...this.latestStatements.incomeStatement.rows.map((row) => [
+        'INCOME_STATEMENT', row.code, row.name, row.type, row.debit, row.credit, row.normalBalanceAmount,
+      ]),
+      ...this.latestStatements.balanceSheet.rows.map((row) => [
+        'BALANCE_SHEET', row.code, row.name, row.type, row.debit, row.credit, row.normalBalanceAmount,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(financialCsvCell).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `financial-statements-${this.clientCompanyId || 'client'}-${this.dateTo || 'all'}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   visibleVatReconciliationRows(rows: VatReconciliationRow[] | null): VatReconciliationRow[] {
     return (rows ?? []).filter(
       (row) =>
@@ -1113,6 +1281,10 @@ export class AccountingPageComponent {
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function financialCsvCell(value: string | number): string {
+  return `"${String(value).replace(/"/g, '""')}"`;
 }
 
 function emptyCoverage(): AccountingCoverage {

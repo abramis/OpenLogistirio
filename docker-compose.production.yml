@@ -1,0 +1,119 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a $$REDIS_PASSWORD ping']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.production
+      target: build
+    env_file: ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: npm run prisma:deploy --workspace=@open-logistirio/api
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.production
+    restart: unless-stopped
+    env_file: ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN}
+      TRUST_PROXY: 'true'
+    volumes:
+      - backup-data:/workspace/backups
+      - supporting-documents-data:/workspace/storage/supporting-documents
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health/ready']
+      interval: 20s
+      timeout: 5s
+      retries: 6
+
+  backup:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - backup-data:/backups
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        while true; do
+          timestamp=$$(date -u +%Y%m%d-%H%M%S)
+          target=/backups/open-logistirio-$${timestamp}.sql
+          MYSQL_PWD="$$MYSQL_PASSWORD" mysqldump \
+            --host="$$MYSQL_HOST" --user="$$MYSQL_USER" \
+            --single-transaction --quick --routines --triggers --events \
+            "$$MYSQL_DATABASE" > "$$target"
+          test -s "$$target"
+          find /backups -type f -name 'open-logistirio-*.sql' \
+            -mtime +"$$BACKUP_RETENTION_DAYS" -delete
+          sleep "$$BACKUP_INTERVAL_SECONDS"
+        done
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.production
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-8080}:80'
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  redis-data:
+  backup-data:
+  supporting-documents-data:

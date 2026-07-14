@@ -29,6 +29,10 @@ export interface DocumentListItem {
   otherTaxesAmount?: string | number;
   otherTaxesCategory?: number | null;
   deductionsAmount?: string | number;
+  replacesDocumentId?: string | null;
+  correctsDocumentId?: string | null;
+  lines?: DocumentLine[];
+  payments?: DocumentPayment[];
   myDataStatus: string;
   myDataMark?: string | null;
   myDataUid?: string | null;
@@ -46,6 +50,50 @@ export interface DocumentListItem {
     myDataAuthorized?: boolean;
     myDataCredentialRef?: string | null;
   };
+}
+
+export interface DocumentLine {
+  id?: string;
+  lineNumber?: number;
+  itemCode?: string;
+  description?: string;
+  quantity?: number;
+  measurementUnit?: number;
+  unitPrice?: number;
+  discountAmount?: number;
+  discountOption?: boolean;
+  netAmount: number;
+  vatAmount: number;
+  vatCategory: string;
+  vatExemptionCategory?: number;
+  withheldAmount?: number;
+  withheldCategory?: number;
+  feesAmount?: number;
+  feesCategory?: number;
+  stampDutyAmount?: number;
+  stampDutyCategory?: number;
+  otherTaxesAmount?: number;
+  otherTaxesCategory?: number;
+  deductionsAmount?: number;
+  incomeClassificationType?: string;
+  incomeClassificationCategory?: string;
+  expenseClassificationType?: string;
+  expenseClassificationCategory?: string;
+  vatClassificationType?: string;
+}
+
+export interface DocumentPayment {
+  id?: string;
+  paymentNumber?: number;
+  type: number;
+  amount: number;
+  paymentMethodInfo?: string;
+  transactionId?: string;
+  tid?: string;
+  providerSigningAuthor?: string;
+  providerSignature?: string;
+  ecrSigningAuthor?: string;
+  ecrSessionNumber?: string;
 }
 
 export interface MyDataPrepareResponse {
@@ -80,6 +128,10 @@ export interface DocumentPayload {
   otherTaxesAmount?: number;
   otherTaxesCategory?: number;
   deductionsAmount?: number;
+  lines?: DocumentLine[];
+  payments?: DocumentPayment[];
+  replacesDocumentId?: string;
+  correctsDocumentId?: string;
 }
 
 export interface MyDataSendResponse {
@@ -137,6 +189,17 @@ export class DocumentsApiService {
 
   create(payload: DocumentPayload): Observable<DocumentListItem> {
     return this.http.post<DocumentListItem>(this.baseUrl, payload, {});
+  }
+
+  updateCounterparty(
+    documentId: string,
+    payload: { counterpartyName?: string; counterpartyVatNumber: string },
+  ): Observable<DocumentListItem> {
+    return this.http.patch<DocumentListItem>(
+      `${this.baseUrl}/${documentId}/counterparty`,
+      payload,
+      {},
+    );
   }
 
   prepareMyData(documentId: string): Observable<MyDataPrepareResponse> {
@@ -198,4 +261,25 @@ export class DocumentsApiService {
   getMyDataHistory(documentId: string): Observable<TransmissionAttempt[]> {
     return this.http.get<TransmissionAttempt[]>(`${this.baseUrl}/${documentId}/mydata/history`, {});
   }
+
+  getCorrectionChain(documentId: string): Observable<DocumentCorrectionChainItem[]> {
+    return this.http.get<DocumentCorrectionChainItem[]>(
+      `${this.baseUrl}/${documentId}/correction-chain`,
+      {},
+    );
+  }
+}
+
+export interface DocumentCorrectionChainItem {
+  id: string;
+  documentType: string;
+  series?: string | null;
+  documentNumber: string;
+  issueDate: string;
+  totalAmount: string | number;
+  myDataStatus: string;
+  myDataMark?: string | null;
+  myDataCancellationMark?: string | null;
+  replacesDocumentId?: string | null;
+  correctsDocumentId?: string | null;
 }

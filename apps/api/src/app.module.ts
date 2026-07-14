@@ -20,6 +20,7 @@ import { ObligationsModule } from './obligations/obligations.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { PeriodClosesModule } from './period-closes/period-closes.module';
+import { SupportingDocumentsModule } from './supporting-documents/supporting-documents.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { PeriodClosesModule } from './period-closes/period-closes.module';
     ReportsModule,
     UsersModule,
     PeriodClosesModule,
+    SupportingDocumentsModule,
   ],
 })
 export class AppModule {}

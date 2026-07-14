@@ -1,5 +1,6 @@
-import { DocumentType } from '@prisma/client';
+import { DeclarationWorkpaperStatus, DocumentType } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { DeclarationsService } from './declarations.service';
 
@@ -77,7 +78,10 @@ describe('DeclarationsService', () => {
           .mockImplementation(({ data }) => Promise.resolve({ id: 'workpaper-1', ...data })),
       },
     };
-    const service = new DeclarationsService(prisma as unknown as PrismaService);
+    const service = new DeclarationsService(
+      prisma as unknown as PrismaService,
+      { record: jest.fn() } as unknown as AuditService,
+    );
 
     const result = await service.generateVatWorkpaper(tenant, {
       clientCompanyId: 'company-1',
@@ -130,6 +134,91 @@ describe('DeclarationsService', () => {
           purchasesNetDelta: 0,
           purchasesVatDelta: 0,
         }),
+      }),
+    );
+  });
+
+  it('generates a quarterly workpaper over all three months with its own period key', async () => {
+    const prisma = {
+      clientCompany: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'company-1', vatNumber: '123456789' }),
+      },
+      document: { findMany: jest.fn().mockResolvedValue([]) },
+      myDataSnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      declarationWorkpaper: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'quarter-1', ...data })),
+      },
+    };
+    const service = new DeclarationsService(
+      prisma as unknown as PrismaService,
+      { record: jest.fn() } as unknown as AuditService,
+    );
+
+    const result = await service.generateVatWorkpaper(tenant, {
+      clientCompanyId: 'company-1',
+      year: 2026,
+      month: 6,
+      periodKind: 'QUARTERLY',
+    });
+
+    expect(prisma.document.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          issueDate: {
+            gte: new Date(Date.UTC(2026, 3, 1)),
+            lt: new Date(Date.UTC(2026, 6, 1)),
+          },
+        }),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        title: 'Workpaper ΦΠΑ τριμήνου 04-06/2026',
+        periodKind: 'QUARTERLY',
+        periodStartMonth: 4,
+        periodEndMonth: 6,
+      }),
+    );
+  });
+
+  it('records an approved workpaper as submitted with its filing evidence', async () => {
+    const update = jest.fn().mockImplementation(({ data }) => Promise.resolve(data));
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      declarationWorkpaper: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'workpaper-1',
+          status: DeclarationWorkpaperStatus.APPROVED,
+        }),
+        update,
+      },
+    };
+    const service = new DeclarationsService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+
+    await service.submit(tenant, 'workpaper-1', {
+      submissionReference: '123456789012',
+      submissionDate: '2026-07-31',
+      attachments: [{ name: 'Αποδεικτικό', url: 'https://files.example/proof.pdf' }],
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: DeclarationWorkpaperStatus.SUBMITTED,
+          submissionReference: '123456789012',
+        }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'DeclarationWorkpaper',
+        newValue: expect.objectContaining({ event: 'DECLARATION_WORKPAPER_SUBMITTED' }),
       }),
     );
   });

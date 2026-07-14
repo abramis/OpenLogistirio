@@ -26,7 +26,7 @@ export interface DocumentsCsvImportResponse {
   totalRows: number;
   validRows: number;
   failedRows: number;
-  errors: Array<{ rowNumber: number; message: string }>;
+  errors: Array<{ rowNumber: number; field?: string; code: string; message: string }>;
   preview: Array<Record<string, unknown>>;
 }
 
@@ -46,5 +46,13 @@ export class ImportsApiService {
     dryRun?: boolean;
   }): Observable<DocumentsCsvImportResponse> {
     return this.http.post<DocumentsCsvImportResponse>(`${this.baseUrl}/documents-csv`, payload, {});
+  }
+
+  errorReportCsv(id: string): Observable<string> {
+    return this.http.get(`${this.baseUrl}/${id}/error-report`, { responseType: 'text' });
+  }
+
+  rollback(id: string): Observable<ImportBatch> {
+    return this.http.post<ImportBatch>(`${this.baseUrl}/${id}/rollback`, {}, {});
   }
 }

@@ -11,6 +11,12 @@ const environmentSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   FRONTEND_ORIGIN: z.string().url().default('http://localhost:4200'),
   BACKUP_DIR: z.string().default('./backups'),
+  SUPPORTING_DOCUMENTS_DIR: z.string().default('./storage/supporting-documents'),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(240),
+  TRUST_PROXY: z
+    .preprocess((value) => value === true || value === 'true', z.boolean())
+    .default(false),
   AADE_MYDATA_ENV: z.enum(['test', 'production']).default('test'),
   AADE_MYDATA_PRODUCTION_ENABLED: z
     .preprocess((value) => value === true || value === 'true', z.boolean())

@@ -26,6 +26,7 @@ export const CLIENT_SETUP_KIND_LABELS: Record<string, string> = {
   DEPRECIATION_RULE: 'Κανόνες απόσβεσης',
   TAX_ADJUSTMENT: 'Δαπάνες αναμόρφωσης',
   INTRASTAT: 'Intrastat',
+  MYDATA_CLASSIFICATION_PROFILE: 'Προφίλ χαρακτηρισμών myDATA',
 };
 
 const commonItems: ClientSetupTemplateItem[] = [
@@ -113,6 +114,51 @@ const commonItems: ClientSetupTemplateItem[] = [
     name: 'Κανονικός συντελεστής ΦΠΑ 24%',
     metadata: { rate: 24 },
   },
+  {
+    kind: 'MYDATA_CLASSIFICATION_PROFILE',
+    code: 'INCOME_SALES_DEFAULT',
+    name: 'Προεπιλεγμένα έσοδα πωλήσεων',
+    description: 'Χρησιμοποιείται όταν η γραμμή δεν έχει ρητό χαρακτηρισμό εσόδου.',
+    metadata: {
+      documentType: 'SALES_INVOICE',
+      incomeClassificationType: 'E3_561_001',
+      incomeClassificationCategory: 'category1_1',
+      priority: 0,
+      isActive: true,
+    },
+  },
+  {
+    kind: 'MYDATA_CLASSIFICATION_PROFILE',
+    code: 'EXPENSE_PURCHASE_DEFAULT',
+    name: 'Προεπιλεγμένα έξοδα αγορών',
+    description: 'Χρησιμοποιείται όταν η γραμμή δεν έχει ρητό χαρακτηρισμό εξόδου.',
+    metadata: {
+      documentType: 'PURCHASE_INVOICE',
+      expenseClassificationType: 'E3_102_001',
+      expenseClassificationCategory: 'category2_4',
+      priority: 0,
+      isActive: true,
+    },
+  },
+  ...[
+    ['VAT_24', 'VAT_361'],
+    ['VAT_13', 'VAT_362'],
+    ['VAT_6', 'VAT_363'],
+    ['VAT_17', 'VAT_364'],
+    ['VAT_9', 'VAT_365'],
+    ['VAT_4', 'VAT_366'],
+  ].map(([vatCategory, vatClassificationType]) => ({
+    kind: 'MYDATA_CLASSIFICATION_PROFILE',
+    code: `EXPENSE_${vatCategory}`,
+    name: `Χαρακτηρισμός ΦΠΑ εξόδων ${vatCategory.replace('VAT_', '')}%`,
+    metadata: {
+      documentType: 'PURCHASE_INVOICE',
+      vatCategory,
+      vatClassificationType,
+      priority: 10,
+      isActive: true,
+    },
+  })),
   {
     kind: 'VAT_SETUP',
     code: 'VAT_REDUCED_13',

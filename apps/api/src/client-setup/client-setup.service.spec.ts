@@ -98,4 +98,43 @@ describe('ClientSetupService', () => {
 
     await expect(service.findItems(tenant, 'company-2')).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('stores a line-targeted myDATA classification profile', async () => {
+    const profile = await service.upsertMyDataClassificationProfile(tenant, 'company-1', {
+      code: 'CONSULTING_24',
+      name: 'Υπηρεσίες συμβουλευτικής 24%',
+      documentType: 'SALES_INVOICE',
+      movementCode: 'SALE_INVOICE',
+      vatCategory: 'VAT_24',
+      itemCode: 'CONSULTING',
+      incomeClassificationType: 'E3_561_001',
+      incomeClassificationCategory: 'category1_1',
+      priority: 20,
+    });
+
+    expect(profile).toEqual(
+      expect.objectContaining({ code: 'CONSULTING_24', kind: 'MYDATA_CLASSIFICATION_PROFILE' }),
+    );
+    expect(prisma.clientSetupItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          kind: 'MYDATA_CLASSIFICATION_PROFILE',
+          metadata: expect.objectContaining({ itemCode: 'CONSULTING', priority: 20 }),
+        }),
+      }),
+    );
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'MyDataClassificationProfile' }),
+    );
+  });
+
+  it('requires complete classification pairs in a profile', async () => {
+    await expect(
+      service.upsertMyDataClassificationProfile(tenant, 'company-1', {
+        code: 'INVALID',
+        name: 'Invalid',
+        incomeClassificationType: 'E3_561_001',
+      }),
+    ).rejects.toThrow('Income classification type and category');
+  });
 });

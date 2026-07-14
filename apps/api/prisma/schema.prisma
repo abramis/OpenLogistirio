@@ -111,6 +111,7 @@ enum ImportBatchStatus {
   PREVIEW
   COMPLETED
   FAILED
+  ROLLED_BACK
 }
 
 enum DeclarationWorkpaperType {
@@ -127,6 +128,12 @@ enum DeclarationWorkpaperStatus {
   APPROVED
   SUBMITTED
   ARCHIVED
+}
+
+enum DeclarationWorkpaperPeriodKind {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
 }
 
 enum PeriodCloseKind {
@@ -210,6 +217,8 @@ model AccountingOffice {
   fixedAssets           FixedAsset[]
   clientSetupItems      ClientSetupItem[]
   obligations           OfficeObligation[]
+  taxCalendarRules      TaxCalendarRule[]
+  taxCalendarOverrides  TaxCalendarOverride[]
   counterparties        Counterparty[]
   importBatches         ImportBatch[]
   declarationWorkpapers DeclarationWorkpaper[]
@@ -221,6 +230,7 @@ model AccountingOffice {
   myDataSyncRuns        MyDataSyncRun[]
   myDataSnapshots       MyDataSnapshot[]
   periodCloseReviews    PeriodCloseReview[]
+  supportingDocuments  SupportingDocument[]
 }
 
 model User {
@@ -318,6 +328,7 @@ model ClientCompany {
   myDataSyncRuns        MyDataSyncRun[]
   myDataSnapshots       MyDataSnapshot[]
   periodCloseReviews    PeriodCloseReview[]
+  supportingDocuments  SupportingDocument[]
 
   @@unique([accountingOfficeId, vatNumber])
   @@index([accountingOfficeId, deletedAt])
@@ -504,6 +515,22 @@ model Counterparty {
   @@index([clientCompanyId, vatNumber])
 }
 
+model SupportingDocument {
+  id                 String   @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  originalName       String   @db.VarChar(255)
+  storageKey         String   @unique @db.VarChar(255)
+  contentType        String   @db.VarChar(120)
+  sizeBytes          Int
+  createdAt          DateTime @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@index([accountingOfficeId, clientCompanyId, createdAt])
+}
+
 model ImportBatch {
   id                 String            @id @default(cuid())
   accountingOfficeId String
@@ -515,10 +542,12 @@ model ImportBatch {
   successfulRows     Int               @default(0)
   failedRows         Int               @default(0)
   errorReport        Json?
+  rolledBackAt       DateTime?
   createdAt          DateTime          @default(now())
 
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  documents        Document[]
 
   @@index([accountingOfficeId, createdAt])
   @@index([clientCompanyId, createdAt])
@@ -532,11 +561,18 @@ model DeclarationWorkpaper {
   title              String
   periodYear         Int
   periodMonth        Int?
+  periodKind         DeclarationWorkpaperPeriodKind @default(MONTHLY)
+  periodStartMonth   Int
+  periodEndMonth     Int
+  periodCloseReviewId String?
   status             DeclarationWorkpaperStatus @default(DRAFT)
   totals             Json
   notes              String?
   generatedAt        DateTime                   @default(now())
   submittedAt        DateTime?
+  submissionReference String?
+  submissionDate     DateTime?
+  submissionAttachments Json?
   approvedById       String?
   approvedAt         DateTime?
   createdAt          DateTime                   @default(now())
@@ -545,11 +581,13 @@ model DeclarationWorkpaper {
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
   approvedBy       User?            @relation("DeclarationWorkpaperApprovedBy", fields: [approvedById], references: [id])
+  periodCloseReview PeriodCloseReview? @relation(fields: [periodCloseReviewId], references: [id])
 
-  @@unique([clientCompanyId, type, periodYear, periodMonth], map: "DeclWorkpaper_period_key")
+  @@unique([clientCompanyId, type, periodYear, periodKind, periodEndMonth], map: "DeclWorkpaper_period_kind_key")
   @@index([accountingOfficeId, type, status], map: "DeclWorkpaper_office_type_status_idx")
   @@index([clientCompanyId, periodYear, periodMonth], map: "DeclWorkpaper_client_period_idx")
   @@index([approvedById], map: "DeclWorkpaper_approved_by_idx")
+  @@index([periodCloseReviewId], map: "DeclWorkpaper_period_close_idx")
 }
 
 model PeriodCloseReview {
@@ -571,6 +609,8 @@ model PeriodCloseReview {
   submittedAt        DateTime?
   approvedAt         DateTime?
   rejectedAt         DateTime?
+  reopenedAt         DateTime?
+  reopenReason       String?
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
@@ -578,6 +618,7 @@ model PeriodCloseReview {
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
   preparedBy       User?            @relation("PeriodClosePreparedBy", fields: [preparedById], references: [id])
   approvedBy       User?            @relation("PeriodCloseApprovedBy", fields: [approvedById], references: [id])
+  declarationWorkpapers DeclarationWorkpaper[]
 
   @@unique([clientCompanyId, kind, periodYear, endMonth], map: "PeriodCloseReview_period_key")
   @@index([accountingOfficeId, status, periodYear], map: "PeriodCloseReview_office_status_year_idx")
@@ -646,6 +687,50 @@ model FixedAssetDepreciationAccountingLink {
   @@unique([journalEntryId], map: "DepAcctLink_journal_key")
 }
 
+model TaxCalendarRule {
+  id                   String             @id @default(cuid())
+  accountingOfficeId   String
+  code                 String             @db.VarChar(80)
+  name                 String
+  obligationType       ObligationType
+  recurrence           ObligationRecurrence
+  dueMonthOffset       Int
+  dueDay               Int
+  applicableMonths     String?            @db.VarChar(80)
+  accountingCategory   String?            @db.VarChar(40)
+  vatRegime            String?            @db.VarChar(40)
+  sourceUrl            String?            @db.VarChar(2000)
+  notes                String?
+  isActive             Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  accountingOffice AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  overrides        TaxCalendarOverride[]
+
+  @@unique([accountingOfficeId, code])
+  @@index([accountingOfficeId, obligationType, isActive], map: "TaxCalRule_office_type_active_idx")
+}
+
+model TaxCalendarOverride {
+  id                 String          @id @default(cuid())
+  accountingOfficeId String
+  taxCalendarRuleId  String
+  periodYear         Int
+  periodMonth        Int
+  dueDate            DateTime
+  sourceUrl          String?         @db.VarChar(2000)
+  notes              String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  taxCalendarRule TaxCalendarRule   @relation(fields: [taxCalendarRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([taxCalendarRuleId, periodYear, periodMonth])
+  @@index([accountingOfficeId, periodYear, periodMonth], map: "TaxCalOverride_office_period_idx")
+}
+
 model OfficeObligation {
   id                 String               @id @default(cuid())
   accountingOfficeId String
@@ -701,6 +786,9 @@ model Document {
   otherTaxesAmount         Decimal      @default(0) @db.Decimal(12, 2)
   otherTaxesCategory       Int?
   deductionsAmount         Decimal      @default(0) @db.Decimal(12, 2)
+  importBatchId            String?
+  replacesDocumentId       String?
+  correctsDocumentId       String?
   myDataStatus             MyDataStatus @default(DRAFT)
   myDataMark               String?
   myDataUid                String?
@@ -716,9 +804,16 @@ model Document {
 
   accountingOffice      AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
   clientCompany         ClientCompany            @relation(fields: [clientCompanyId], references: [id])
+  importBatch           ImportBatch?             @relation(fields: [importBatchId], references: [id])
   transmissionAttempts  TransmissionAttempt[]
+  lines                 DocumentLine[]
+  payments              DocumentPayment[]
   accountingLinks       DocumentAccountingLink[]
   myDataSnapshotMatches MyDataSnapshot[]         @relation("MyDataSnapshotMatchedDocument")
+  replacesDocument     Document?                 @relation("DocumentReplacement", fields: [replacesDocumentId], references: [id])
+  replacedByDocuments  Document[]                @relation("DocumentReplacement")
+  correctsDocument     Document?                 @relation("DocumentCorrection", fields: [correctsDocumentId], references: [id])
+  correctedByDocuments Document[]                @relation("DocumentCorrection")
 
   @@index([accountingOfficeId, clientCompanyId, issueDate])
   @@index([accountingOfficeId, myDataStatus])
@@ -726,6 +821,69 @@ model Document {
   @@index([myDataCancellationMark])
   @@index([clientCompanyId, movementCode, issueDate])
   @@index([clientCompanyId, journalCode, issueDate])
+  @@index([replacesDocumentId])
+  @@index([correctsDocumentId])
+  @@index([importBatchId])
+}
+
+model DocumentPayment {
+  id                    String   @id @default(cuid())
+  documentId            String
+  paymentNumber         Int
+  type                  Int
+  amount                Decimal  @db.Decimal(12, 2)
+  paymentMethodInfo     String?  @db.VarChar(500)
+  transactionId         String?  @db.VarChar(200)
+  tid                   String?  @db.VarChar(200)
+  providerSigningAuthor String?  @db.VarChar(20)
+  providerSignature     String?  @db.VarChar(500)
+  ecrSigningAuthor      String?  @db.VarChar(15)
+  ecrSessionNumber      String?  @db.VarChar(6)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, paymentNumber])
+  @@index([documentId])
+}
+
+model DocumentLine {
+  id                           String   @id @default(cuid())
+  documentId                   String
+  lineNumber                   Int
+  itemCode                     String?  @db.VarChar(50)
+  description                  String?  @db.VarChar(300)
+  quantity                     Decimal? @db.Decimal(14, 3)
+  measurementUnit              Int?
+  unitPrice                    Decimal? @db.Decimal(12, 4)
+  discountAmount               Decimal  @default(0) @db.Decimal(12, 2)
+  discountOption               Boolean?
+  netAmount                    Decimal  @db.Decimal(12, 2)
+  vatAmount                    Decimal  @db.Decimal(12, 2)
+  vatCategory                  String   @db.VarChar(40)
+  vatExemptionCategory         Int?
+  withheldAmount               Decimal  @default(0) @db.Decimal(12, 2)
+  withheldCategory             Int?
+  feesAmount                   Decimal  @default(0) @db.Decimal(12, 2)
+  feesCategory                 Int?
+  stampDutyAmount              Decimal  @default(0) @db.Decimal(12, 2)
+  stampDutyCategory            Int?
+  otherTaxesAmount             Decimal  @default(0) @db.Decimal(12, 2)
+  otherTaxesCategory           Int?
+  deductionsAmount             Decimal  @default(0) @db.Decimal(12, 2)
+  incomeClassificationType     String?  @db.VarChar(40)
+  incomeClassificationCategory String?  @db.VarChar(40)
+  expenseClassificationType    String?  @db.VarChar(40)
+  expenseClassificationCategory String? @db.VarChar(40)
+  vatClassificationType        String?  @db.VarChar(40)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, lineNumber])
+  @@index([documentId])
 }
 
 model MyDataSyncRun {

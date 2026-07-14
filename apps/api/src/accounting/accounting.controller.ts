@@ -8,6 +8,7 @@ import { AccountingService } from './accounting.service';
 import { BulkPostDocumentsDto } from './dto/bulk-post-documents.dto';
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto';
 import { SeedDefaultChartDto } from './dto/seed-default-chart.dto';
+import { YearEndCloseDto } from './dto/year-end-close.dto';
 
 @ApiTags('accounting')
 @Controller('accounting')
@@ -128,6 +129,18 @@ export class AccountingController {
     @Param('entryId') entryId: string,
   ) {
     return this.accountingService.postFixedAssetDepreciation(tenant, entryId);
+  }
+
+  @Post('year-end/preview')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  yearEndPreview(@CurrentTenant() tenant: TenantContext, @Body() dto: YearEndCloseDto) {
+    return this.accountingService.yearEndPreview(tenant, dto);
+  }
+
+  @Post('year-end/close')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  closeYearEnd(@CurrentTenant() tenant: TenantContext, @Body() dto: YearEndCloseDto) {
+    return this.accountingService.closeYearEnd(tenant, dto);
   }
 
   @Get('trial-balance')

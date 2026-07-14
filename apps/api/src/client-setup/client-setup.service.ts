@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { ApplyClientSetupTemplateDto } from './dto/apply-client-setup-template.dto';
+import { UpsertMyDataClassificationProfileDto } from './dto/upsert-mydata-classification-profile.dto';
 import {
   CLIENT_SETUP_KIND_LABELS,
   CLIENT_SETUP_TEMPLATES,
@@ -108,6 +109,89 @@ export class ClientSetupService {
     };
   }
 
+  async findMyDataClassificationProfiles(tenant: TenantContext, clientCompanyId: string) {
+    await this.ensureTenantCompany(tenant, clientCompanyId);
+    return this.prisma.clientSetupItem.findMany({
+      where: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        clientCompanyId,
+        kind: 'MYDATA_CLASSIFICATION_PROFILE',
+      },
+      orderBy: { code: 'asc' },
+    });
+  }
+
+  async upsertMyDataClassificationProfile(
+    tenant: TenantContext,
+    clientCompanyId: string,
+    dto: UpsertMyDataClassificationProfileDto,
+  ) {
+    await this.ensureTenantCompany(tenant, clientCompanyId);
+    validateClassificationPair(
+      'Income classification',
+      dto.incomeClassificationType,
+      dto.incomeClassificationCategory,
+    );
+    validateClassificationPair(
+      'Expense classification',
+      dto.expenseClassificationType,
+      dto.expenseClassificationCategory,
+    );
+    if (
+      !dto.incomeClassificationType &&
+      !dto.expenseClassificationType &&
+      !dto.vatClassificationType
+    ) {
+      throw new BadRequestException(
+        'A profile must define an income, expense, or VAT classification.',
+      );
+    }
+
+    const metadata = {
+      documentType: dto.documentType,
+      movementCode: dto.movementCode,
+      vatCategory: dto.vatCategory,
+      itemCode: dto.itemCode,
+      incomeClassificationType: dto.incomeClassificationType,
+      incomeClassificationCategory: dto.incomeClassificationCategory,
+      expenseClassificationType: dto.expenseClassificationType,
+      expenseClassificationCategory: dto.expenseClassificationCategory,
+      vatClassificationType: dto.vatClassificationType,
+      priority: dto.priority ?? 0,
+      isActive: dto.isActive ?? true,
+    };
+    const item = await this.prisma.clientSetupItem.upsert({
+      where: {
+        clientCompanyId_kind_code: {
+          clientCompanyId,
+          kind: 'MYDATA_CLASSIFICATION_PROFILE',
+          code: dto.code,
+        },
+      },
+      create: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        clientCompanyId,
+        kind: 'MYDATA_CLASSIFICATION_PROFILE',
+        code: dto.code,
+        name: dto.name,
+        metadata: toJson(metadata),
+      },
+      update: {
+        name: dto.name,
+        metadata: toJson(metadata),
+        sourceTemplate: null,
+      },
+    });
+    await this.auditService.record({
+      tenant,
+      action: AuditAction.UPDATE,
+      entityType: 'MyDataClassificationProfile',
+      entityId: item.id,
+      newValue: { clientCompanyId, code: dto.code, metadata },
+    });
+    return item;
+  }
+
   private findTemplate(templateId: string): ClientSetupTemplate {
     const template = CLIENT_SETUP_TEMPLATES.find((entry) => entry.id === templateId);
     if (!template) {
@@ -146,4 +230,10 @@ function summarizeKinds(items: Array<ClientSetupTemplateItem | ClientSetupItem>)
 
 function toJson(value: Record<string, unknown> | undefined): Prisma.InputJsonValue | undefined {
   return value as Prisma.InputJsonValue | undefined;
+}
+
+function validateClassificationPair(label: string, type?: string, category?: string): void {
+  if (Boolean(type) !== Boolean(category)) {
+    throw new BadRequestException(`${label} type and category must be supplied together.`);
+  }
 }

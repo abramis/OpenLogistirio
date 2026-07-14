@@ -388,7 +388,12 @@ export class MyDataService {
   ) {
     const document = await this.getTenantDocument(tenant, documentId);
     this.ensureSendAllowed(document, options.force);
-    const xml = document.myDataXmlPreview ?? this.mappingService.mapDocumentToXml(document);
+    // A forced retry follows a correction after a failed transmission. Rebuild its payload
+    // from the current document instead of replaying a stale preview.
+    const xml =
+      options.force === true
+        ? this.mappingService.mapDocumentToXml(document)
+        : document.myDataXmlPreview ?? this.mappingService.mapDocumentToXml(document);
     const correlationId = randomUUID();
 
     try {
@@ -919,6 +924,12 @@ export class MyDataService {
       },
       include: {
         clientCompany: true,
+        lines: {
+          orderBy: { lineNumber: 'asc' },
+        },
+        payments: {
+          orderBy: { paymentNumber: 'asc' },
+        },
       },
     });
 

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DocumentType } from '@prisma/client';
 import {
+  ArrayMinSize,
   IsDateString,
   IsEnum,
   IsInt,
@@ -11,7 +12,11 @@ import {
   Matches,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreateDocumentLineDto } from './create-document-line.dto';
+import { CreateDocumentPaymentDto } from './create-document-payment.dto';
 
 export class CreateDocumentDto {
   @ApiProperty()
@@ -88,6 +93,13 @@ export class CreateDocumentDto {
   @Max(8)
   paymentMethodType?: number;
 
+  @ApiPropertyOptional({ type: [CreateDocumentPaymentDto] })
+  @IsOptional()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateDocumentPaymentDto)
+  payments?: CreateDocumentPaymentDto[];
+
   @ApiPropertyOptional({ example: 27, minimum: 1, maximum: 31 })
   @IsOptional()
   @IsInt()
@@ -159,4 +171,21 @@ export class CreateDocumentDto {
   @IsNumber()
   @Min(0)
   deductionsAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Cancelled document replaced by this invoice.' })
+  @IsOptional()
+  @IsString()
+  replacesDocumentId?: string;
+
+  @ApiPropertyOptional({ description: 'Original document corrected by this credit note.' })
+  @IsOptional()
+  @IsString()
+  correctsDocumentId?: string;
+
+  @ApiPropertyOptional({ type: [CreateDocumentLineDto] })
+  @IsOptional()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateDocumentLineDto)
+  lines?: CreateDocumentLineDto[];
 }

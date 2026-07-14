@@ -95,6 +95,22 @@ export interface ApplyClientSetupResult {
   items: ClientSetupItem[];
 }
 
+export interface MyDataClassificationProfilePayload {
+  code: string;
+  name: string;
+  documentType?: string;
+  movementCode?: string;
+  vatCategory?: string;
+  itemCode?: string;
+  incomeClassificationType?: string;
+  incomeClassificationCategory?: string;
+  expenseClassificationType?: string;
+  expenseClassificationCategory?: string;
+  vatClassificationType?: string;
+  priority?: number;
+  isActive?: boolean;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -134,6 +150,24 @@ export class CompaniesApiService {
     return this.http.post<ApplyClientSetupResult>(
       `${this.baseUrl}/${id}/setup/apply`,
       { templateId },
+      {},
+    );
+  }
+
+  findMyDataClassificationProfiles(id: string): Observable<ClientSetupItem[]> {
+    return this.http.get<ClientSetupItem[]>(
+      `${this.baseUrl}/${id}/setup/mydata-classification-profiles`,
+      {},
+    );
+  }
+
+  upsertMyDataClassificationProfile(
+    id: string,
+    payload: MyDataClassificationProfilePayload,
+  ): Observable<ClientSetupItem> {
+    return this.http.post<ClientSetupItem>(
+      `${this.baseUrl}/${id}/setup/mydata-classification-profiles`,
+      payload,
       {},
     );
   }

@@ -93,8 +93,8 @@ describe('MyDataMappingService', () => {
 
     expect(xml).toContain('<InvoicesDoc');
     expect(xml).toContain('<vatNumber>999888777</vatNumber>');
-    expect(xml).toContain('<name>Demo &lt;Company&gt;</name>');
-    expect(xml).toContain('<name>Customer &amp; Co</name>');
+    expect(xml).not.toContain('<name>Demo &lt;Company&gt;</name>');
+    expect(xml).not.toContain('<name>Customer &amp; Co</name>');
     expect(xml).toContain('<invoiceType>1.1</invoiceType>');
     expect(xml).toContain('<icls:classificationType>E3_561_001</icls:classificationType>');
     expect(xml).toContain('<totalGrossValue>124.00</totalGrossValue>');
@@ -133,12 +133,45 @@ describe('MyDataMappingService', () => {
 
     expect(xml).toContain('<invoiceType>5.1</invoiceType>');
     expect(xml).toContain('<correlatedInvoices>4000012345</correlatedInvoices>');
+    expect(xml).not.toContain('<itemDescr>');
     expect(xml).toContain('<type>5</type>');
     expect(xml).toContain('<taxType>1</taxType>');
     expect(xml).toContain('<taxCategory>3</taxCategory>');
     expect(xml).toContain('<taxType>5</taxType>');
     expect(xml).toContain('<totalWithheldAmount>20.00</totalWithheldAmount>');
     expect(xml).toContain('<totalGrossValue>108.00</totalGrossValue>');
+    expect(() => new MyDataXmlValidationService().validateInvoices(xml)).not.toThrow();
+  });
+
+  it('maps multiple payment methods including POS, provider and ECR fields', () => {
+    const xml = new MyDataMappingService().mapDocumentToXml({
+      ...document,
+      payments: [
+        {
+          paymentNumber: 1,
+          type: 3,
+          amount: new Prisma.Decimal('24.00'),
+        },
+        {
+          paymentNumber: 2,
+          type: 7,
+          amount: new Prisma.Decimal('100.00'),
+          paymentMethodInfo: 'POS front desk',
+          transactionId: 'txn-1',
+          tid: 'POS-1',
+          providerSigningAuthor: 'provider-1',
+          providerSignature: 'signature-1',
+          ecrSigningAuthor: 'ECR-1',
+          ecrSessionNumber: '123456',
+        },
+      ],
+    });
+
+    expect(xml.match(/<paymentMethodDetails>/g)).toHaveLength(2);
+    expect(xml).toContain('<transactionId>txn-1</transactionId>');
+    expect(xml).toContain('<tid>POS-1</tid>');
+    expect(xml).toContain('<ProvidersSignature>');
+    expect(xml).toContain('<ECRToken>');
     expect(() => new MyDataXmlValidationService().validateInvoices(xml)).not.toThrow();
   });
 
@@ -179,6 +212,79 @@ describe('MyDataMappingService', () => {
   it('validates generated invoices against the official AADE v2.0.1 XSD', () => {
     const xml = new MyDataMappingService().mapDocumentToXml(document);
 
+    expect(() => new MyDataXmlValidationService().validateInvoices(xml)).not.toThrow();
+  });
+
+  it('maps each document line with its own VAT, quantity and classification', () => {
+    const xml = new MyDataMappingService().mapDocumentToXml({
+      ...document,
+      netAmount: new Prisma.Decimal('150.00'),
+      vatAmount: new Prisma.Decimal('30.00'),
+      totalAmount: new Prisma.Decimal('180.00'),
+      vatCategory: 'MULTIPLE',
+      lines: [
+        {
+          lineNumber: 1,
+          itemCode: 'SERV-1',
+          description: 'Υπηρεσία 24%',
+          quantity: new Prisma.Decimal('1.000'),
+          measurementUnit: 7,
+          discountOption: null,
+          netAmount: new Prisma.Decimal('100.00'),
+          vatAmount: new Prisma.Decimal('24.00'),
+          vatCategory: 'VAT_24',
+          vatExemptionCategory: null,
+          withheldAmount: new Prisma.Decimal('0'),
+          withheldCategory: null,
+          feesAmount: new Prisma.Decimal('0'),
+          feesCategory: null,
+          stampDutyAmount: new Prisma.Decimal('0'),
+          stampDutyCategory: null,
+          otherTaxesAmount: new Prisma.Decimal('0'),
+          otherTaxesCategory: null,
+          deductionsAmount: new Prisma.Decimal('0'),
+          incomeClassificationType: 'E3_561_001',
+          incomeClassificationCategory: 'category1_1',
+          expenseClassificationType: null,
+          expenseClassificationCategory: null,
+          vatClassificationType: null,
+        },
+        {
+          lineNumber: 2,
+          itemCode: null,
+          description: 'Έντυπο 6%',
+          quantity: new Prisma.Decimal('2.000'),
+          measurementUnit: 1,
+          discountOption: null,
+          netAmount: new Prisma.Decimal('50.00'),
+          vatAmount: new Prisma.Decimal('6.00'),
+          vatCategory: 'VAT_6',
+          vatExemptionCategory: null,
+          withheldAmount: new Prisma.Decimal('0'),
+          withheldCategory: null,
+          feesAmount: new Prisma.Decimal('0'),
+          feesCategory: null,
+          stampDutyAmount: new Prisma.Decimal('0'),
+          stampDutyCategory: null,
+          otherTaxesAmount: new Prisma.Decimal('0'),
+          otherTaxesCategory: null,
+          deductionsAmount: new Prisma.Decimal('0'),
+          incomeClassificationType: 'E3_561_001',
+          incomeClassificationCategory: 'category1_1',
+          expenseClassificationType: null,
+          expenseClassificationCategory: null,
+          vatClassificationType: null,
+        },
+      ],
+    });
+
+    expect(xml).toContain('<lineNumber>1</lineNumber>');
+    expect(xml).toContain('<lineNumber>2</lineNumber>');
+    expect(xml).toContain('<itemCode>SERV-1</itemCode>');
+    expect(xml).toContain('<quantity>2</quantity>');
+    expect(xml).toContain('<vatCategory>1</vatCategory>');
+    expect(xml).toContain('<vatCategory>3</vatCategory>');
+    expect(xml).toContain('<totalNetValue>150.00</totalNetValue>');
     expect(() => new MyDataXmlValidationService().validateInvoices(xml)).not.toThrow();
   });
 
@@ -434,6 +540,7 @@ describe('MyDataService', () => {
     prisma.document.findFirst.mockResolvedValue({
       ...document,
       myDataStatus: MyDataStatus.FAILED,
+      myDataXmlPreview: '<InvoicesDoc><stale-preview /></InvoicesDoc>',
     });
     aadeTestProvider.transmitInvoice.mockResolvedValue({
       status: 'sent',
@@ -451,6 +558,9 @@ describe('MyDataService', () => {
       credentialEnvPrefix: 'AADE_MYDATA',
       force: true,
     });
+    expect(aadeTestProvider.transmitInvoice.mock.calls[0][0].payloadXml).not.toContain(
+      'stale-preview',
+    );
     expect(prisma.transmissionAttempt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         documentId: 'document-1',

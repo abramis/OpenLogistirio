@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
 import { Roles } from '../auth/roles.decorator';
@@ -8,6 +8,7 @@ import { SendMyDataDto } from '../mydata/dto/send-mydata.dto';
 import { MyDataService } from '../mydata/mydata.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { FindDocumentsQueryDto } from './dto/find-documents-query.dto';
+import { UpdateDocumentCounterpartyDto } from './dto/update-document-counterparty.dto';
 import { DocumentsService } from './documents.service';
 
 @ApiTags('documents')
@@ -27,6 +28,21 @@ export class DocumentsController {
   @Roles(...OFFICE_WRITE_ROLES)
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateDocumentDto) {
     return this.documentsService.create(tenant, dto);
+  }
+
+  @Patch(':id/counterparty')
+  @Roles(...OFFICE_WRITE_ROLES)
+  updateCounterparty(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateDocumentCounterpartyDto,
+  ) {
+    return this.documentsService.updateCounterparty(tenant, id, dto);
+  }
+
+  @Get(':id/correction-chain')
+  getCorrectionChain(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.documentsService.correctionChain(tenant, id);
   }
 
   @Post(':id/mydata/prepare')

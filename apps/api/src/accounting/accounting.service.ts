@@ -12,6 +12,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { BulkPostDocumentsDto } from './dto/bulk-post-documents.dto';
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto';
+import { YearEndCloseDto } from './dto/year-end-close.dto';
 
 @Injectable()
 export class AccountingService {
@@ -669,6 +670,236 @@ export class AccountingService {
     };
   }
 
+  async yearEndPreview(tenant: TenantContext, dto: YearEndCloseDto) {
+    await this.ensureTenantCompany(tenant, dto.clientCompanyId);
+    const [trialBalance, accounts, existingEntries] = await Promise.all([
+      this.trialBalance(
+        tenant,
+        dto.clientCompanyId,
+        `${dto.fiscalYear}-01-01`,
+        `${dto.fiscalYear}-12-31`,
+      ),
+      this.prisma.chartAccount.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: dto.clientCompanyId,
+          code: { in: [dto.resultAccountCode, dto.retainedEarningsAccountCode] },
+          isActive: true,
+        },
+      }),
+      this.prisma.journalEntry.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: dto.clientCompanyId,
+          fiscalYear: dto.fiscalYear,
+          source: JournalEntrySource.CLOSING,
+          reference: { in: [yearEndReference(dto.fiscalYear, 'P_AND_L'), yearEndReference(dto.fiscalYear, 'TRANSFER')] },
+        },
+        select: { id: true, entryNumber: true, reference: true },
+      }),
+    ]);
+    const accountsByCode = new Map(accounts.map((account) => [account.code, account]));
+    const resultAccount = accountsByCode.get(dto.resultAccountCode);
+    const retainedEarningsAccount = accountsByCode.get(dto.retainedEarningsAccountCode);
+    if (!resultAccount || !retainedEarningsAccount) {
+      throw new BadRequestException(
+        'The result and retained-earnings accounts must be active accounts for this client.',
+      );
+    }
+    if (resultAccount.id === retainedEarningsAccount.id) {
+      throw new BadRequestException('Result and retained-earnings accounts must be different.');
+    }
+
+    const incomeRows = trialBalance.filter(
+      (row) => row.type === ChartAccountType.REVENUE || row.type === ChartAccountType.EXPENSE,
+    );
+    const closingLines = incomeRows
+      .filter((row) => row.balance !== 0)
+      .map((row) => ({
+        accountCode: row.code,
+        accountName: row.name,
+        type: row.type,
+        debit: row.balance < 0 ? roundMoney(row.balance * -1) : 0,
+        credit: row.balance > 0 ? row.balance : 0,
+      }));
+    const resultDebit = roundMoney(closingLines.reduce((sum, line) => sum + line.credit, 0));
+    const resultCredit = roundMoney(closingLines.reduce((sum, line) => sum + line.debit, 0));
+    const netResult = roundMoney(resultCredit - resultDebit);
+    const transfer =
+      netResult === 0
+        ? undefined
+        : netResult > 0
+          ? {
+              resultDebit: netResult,
+              resultCredit: 0,
+              retainedEarningsDebit: 0,
+              retainedEarningsCredit: netResult,
+            }
+          : {
+              resultDebit: 0,
+              resultCredit: roundMoney(netResult * -1),
+              retainedEarningsDebit: roundMoney(netResult * -1),
+              retainedEarningsCredit: 0,
+            };
+
+    return {
+      clientCompanyId: dto.clientCompanyId,
+      fiscalYear: dto.fiscalYear,
+      resultAccount: { code: resultAccount.code, name: resultAccount.name },
+      retainedEarningsAccount: { code: retainedEarningsAccount.code, name: retainedEarningsAccount.name },
+      incomeRows: closingLines,
+      result: {
+        revenue: roundMoney(
+          incomeRows
+            .filter((row) => row.type === ChartAccountType.REVENUE)
+            .reduce((sum, row) => sum + statementAmount(row), 0),
+        ),
+        expenses: roundMoney(
+          incomeRows
+            .filter((row) => row.type === ChartAccountType.EXPENSE)
+            .reduce((sum, row) => sum + statementAmount(row), 0),
+        ),
+        netResult,
+      },
+      closingEntry: {
+        reference: yearEndReference(dto.fiscalYear, 'P_AND_L'),
+        debit: resultDebit,
+        credit: resultCredit,
+      },
+      transferEntry: transfer
+        ? { reference: yearEndReference(dto.fiscalYear, 'TRANSFER'), ...transfer }
+        : undefined,
+      alreadyClosed: existingEntries.length > 0,
+      existingEntries,
+    };
+  }
+
+  async closeYearEnd(tenant: TenantContext, dto: YearEndCloseDto) {
+    const preview = await this.yearEndPreview(tenant, dto);
+    if (preview.alreadyClosed) {
+      throw new BadRequestException('A year-end closing entry already exists for this fiscal year.');
+    }
+    if (preview.incomeRows.length === 0) {
+      throw new BadRequestException('There are no income or expense balances to close.');
+    }
+
+    const closingDate = new Date(Date.UTC(dto.fiscalYear, 11, 31));
+    return this.prisma.$transaction(async (tx) => {
+      const periods = await tx.accountingPeriod.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: dto.clientCompanyId,
+          fiscalYear: dto.fiscalYear,
+        },
+        orderBy: { periodMonth: 'asc' },
+      });
+      if (periods.length !== 12 || periods.some((period) => period.periodMonth < 12 && period.status === AccountingPeriodStatus.OPEN)) {
+        throw new BadRequestException(
+          'Close all accounting periods from January through November before the year-end close.',
+        );
+      }
+      const december = periods.find((period) => period.periodMonth === 12);
+      if (!december || december.status !== AccountingPeriodStatus.OPEN) {
+        throw new BadRequestException('December must remain open while the closing entries are posted.');
+      }
+
+      const accountCodes = [
+        ...preview.incomeRows.map((line) => line.accountCode),
+        dto.resultAccountCode,
+        dto.retainedEarningsAccountCode,
+      ];
+      const accounts = await tx.chartAccount.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: dto.clientCompanyId,
+          code: { in: accountCodes },
+          isActive: true,
+        },
+      });
+      const accountMap = new Map(accounts.map((account) => [account.code, account]));
+      const accountId = (code: string) => this.requireAccount(accountMap, code).id;
+
+      const closingEntry = await tx.journalEntry.create({
+        data: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: dto.clientCompanyId,
+          entryNumber: await this.nextEntryNumber(tx, dto.clientCompanyId, 'CLOS', closingDate),
+          entryDate: closingDate,
+          fiscalYear: dto.fiscalYear,
+          periodMonth: 12,
+          source: JournalEntrySource.CLOSING,
+          status: JournalEntryStatus.POSTED,
+          description: `Κλείσιμο λογαριασμών αποτελεσμάτων χρήσης ${dto.fiscalYear}`,
+          reference: yearEndReference(dto.fiscalYear, 'P_AND_L'),
+          postedAt: new Date(),
+          lines: {
+            create: [
+              ...preview.incomeRows.map((line, index) => ({
+                accountId: accountId(line.accountCode),
+                lineNumber: index + 1,
+                description: `Κλείσιμο ${line.accountCode} ${line.accountName}`,
+                debit: toMoney(line.debit),
+                credit: toMoney(line.credit),
+              })),
+              {
+                accountId: accountId(dto.resultAccountCode),
+                lineNumber: preview.incomeRows.length + 1,
+                description: `Συγκέντρωση αποτελέσματος ${dto.fiscalYear}`,
+                debit: toMoney(preview.closingEntry.debit),
+                credit: toMoney(preview.closingEntry.credit),
+              },
+            ],
+          },
+        },
+        include: journalEntryInclude,
+      });
+
+      let transferEntry: Awaited<ReturnType<typeof tx.journalEntry.create>> | undefined;
+      if (preview.transferEntry) {
+        transferEntry = await tx.journalEntry.create({
+          data: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            clientCompanyId: dto.clientCompanyId,
+            entryNumber: await this.nextEntryNumber(tx, dto.clientCompanyId, 'CLOS', closingDate),
+            entryDate: closingDate,
+            fiscalYear: dto.fiscalYear,
+            periodMonth: 12,
+            source: JournalEntrySource.CLOSING,
+            status: JournalEntryStatus.POSTED,
+            description: `Μεταφορά αποτελέσματος χρήσης ${dto.fiscalYear}`,
+            reference: yearEndReference(dto.fiscalYear, 'TRANSFER'),
+            postedAt: new Date(),
+            lines: {
+              create: [
+                {
+                  accountId: accountId(dto.resultAccountCode),
+                  lineNumber: 1,
+                  description: `Μεταφορά αποτελέσματος ${dto.fiscalYear}`,
+                  debit: toMoney(preview.transferEntry.resultDebit),
+                  credit: toMoney(preview.transferEntry.resultCredit),
+                },
+                {
+                  accountId: accountId(dto.retainedEarningsAccountCode),
+                  lineNumber: 2,
+                  description: `Μεταφορά αποτελέσματος ${dto.fiscalYear}`,
+                  debit: toMoney(preview.transferEntry.retainedEarningsDebit),
+                  credit: toMoney(preview.transferEntry.retainedEarningsCredit),
+                },
+              ],
+            },
+          },
+          include: journalEntryInclude,
+        });
+      }
+
+      await tx.accountingPeriod.update({
+        where: { id: december.id },
+        data: { status: AccountingPeriodStatus.CLOSED, closedAt: new Date() },
+      });
+      return { preview, closingEntry, transferEntry };
+    });
+  }
+
   async vatReconciliation(tenant: TenantContext, clientCompanyId: string, year: number) {
     await this.ensureTenantCompany(tenant, clientCompanyId);
     const rows = new Map<string, VatReconciliationRow>();
@@ -1247,6 +1478,13 @@ const DEFAULT_CHART_ACCOUNTS: DefaultAccount[] = [
     normalBalance: NormalBalance.CREDIT,
     taxCategory: 'SALES',
   },
+  {
+    code: '82.00',
+    name: 'Αποτελέσματα χρήσης',
+    type: ChartAccountType.EQUITY,
+    normalBalance: NormalBalance.CREDIT,
+    taxCategory: 'YEAR_END_RESULT',
+  },
 ];
 
 const DEFAULT_DOCUMENT_POSTING_RULES: DefaultDocumentPostingRule[] = [
@@ -1452,7 +1690,15 @@ function sourceForPrefix(prefix: string): JournalEntrySource {
     return JournalEntrySource.FIXED_ASSET;
   }
 
+  if (prefix === 'CLOS') {
+    return JournalEntrySource.CLOSING;
+  }
+
   return JournalEntrySource.MANUAL;
+}
+
+function yearEndReference(fiscalYear: number, kind: 'P_AND_L' | 'TRANSFER'): string {
+  return `YEAR-END-${fiscalYear}-${kind}`;
 }
 
 function parseJournalEntrySource(source?: string): JournalEntrySource | undefined {

@@ -9,7 +9,12 @@ import {
   ObligationPayload,
   ObligationsApiService,
   OfficeObligation,
+  TaxCalendarOverridePayload,
+  TaxCalendarRule,
+  TaxCalendarRulePayload,
 } from '../../core/api/obligations-api.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { ADMIN_ROLES } from '../../core/auth/user-roles';
 
 @Component({
   selector: 'ol-obligations-page',
@@ -297,6 +302,101 @@ import {
         Δεν υπάρχουν υποχρεώσεις για τα φίλτρα.
       </div>
     </section>
+
+    <section class="calendar-section" *ngIf="canManageTaxCalendar()">
+      <div class="section-heading">
+        <div>
+          <h2>Φορολογικό ημερολόγιο</h2>
+          <p>Οι κανόνες παράγουν τις προθεσμίες. Επιβεβαίωσε κάθε αλλαγή από επίσημη ανακοίνωση.</p>
+        </div>
+      </div>
+
+      <div class="work-grid calendar-grid">
+        <article class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title"><span class="material-symbols-outlined">event_note</span> Κανόνας</h3>
+              <p class="card-subtitle">Δημιουργία ή ενημέρωση με σταθερό κωδικό.</p>
+            </div>
+          </div>
+          <form class="card-body form-grid" (ngSubmit)="saveTaxCalendarRule()">
+            <label>Κωδικός<input [(ngModel)]="calendarRuleForm.code" name="calendarRuleCode" required /></label>
+            <label>Όνομα<input [(ngModel)]="calendarRuleForm.name" name="calendarRuleName" required /></label>
+            <label>
+              Τύπος
+              <select [(ngModel)]="calendarRuleForm.obligationType" name="calendarRuleType">
+                <option value="VAT_RETURN">Περιοδική ΦΠΑ</option>
+                <option value="MYDATA_REVIEW">Έλεγχος myDATA</option>
+                <option value="WITHHOLDING_TAX">Παρακρατούμενοι</option>
+                <option value="INCOME_TAX_PREP">Φορολογία εισοδήματος</option>
+                <option value="PAYROLL_REVIEW">Μισθοδοσία</option>
+                <option value="CUSTOM">Άλλη εργασία</option>
+              </select>
+            </label>
+            <label>
+              Επανάληψη
+              <select [(ngModel)]="calendarRuleForm.recurrence" name="calendarRuleRecurrence">
+                <option value="MONTHLY">Μηνιαία</option>
+                <option value="QUARTERLY">Τριμηνιαία</option>
+                <option value="YEARLY">Ετήσια</option>
+              </select>
+            </label>
+            <label>Offset μηνών<input [(ngModel)]="calendarRuleForm.dueMonthOffset" name="calendarRuleOffset" type="number" min="0" max="24" /></label>
+            <label>Ημέρα (0=τέλος μήνα)<input [(ngModel)]="calendarRuleForm.dueDay" name="calendarRuleDay" type="number" min="0" max="31" /></label>
+            <label>Μήνες εφαρμογής<input [(ngModel)]="calendarRuleForm.applicableMonths" name="calendarRuleMonths" placeholder="π.χ. 3,6,9,12" /></label>
+            <label>Κατηγορία βιβλίων<input [(ngModel)]="calendarRuleForm.accountingCategory" name="calendarRuleAccountingCategory" placeholder="π.χ. SIMPLE_BOOKS" /></label>
+            <label>Καθεστώς ΦΠΑ<input [(ngModel)]="calendarRuleForm.vatRegime" name="calendarRuleVatRegime" placeholder="π.χ. NORMAL" /></label>
+            <label>Πηγή<input [(ngModel)]="calendarRuleForm.sourceUrl" name="calendarRuleSourceUrl" type="url" placeholder="https://..." /></label>
+            <label class="wide">Σημειώσεις<textarea [(ngModel)]="calendarRuleForm.notes" name="calendarRuleNotes" rows="2"></textarea></label>
+            <label class="check-row wide"><input [(ngModel)]="calendarRuleForm.isActive" name="calendarRuleActive" type="checkbox" /> Ενεργός κανόνας</label>
+            <div class="wide form-actions">
+              <button class="btn btn-secondary" type="button" (click)="resetTaxCalendarRuleForm()">Νέος</button>
+              <button class="btn btn-primary" type="submit"><span class="material-symbols-outlined">save</span> Αποθήκευση κανόνα</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title"><span class="material-symbols-outlined">edit_calendar</span> Εξαίρεση προθεσμίας</h3>
+              <p class="card-subtitle">Υπερισχύει για έναν συγκεκριμένο μήνα.</p>
+            </div>
+          </div>
+          <form class="card-body form-grid" (ngSubmit)="saveTaxCalendarOverride()">
+            <label class="wide">
+              Κανόνας
+              <select [(ngModel)]="calendarOverrideForm.taxCalendarRuleId" name="calendarOverrideRule" required>
+                <option value="">Επιλογή κανόνα</option>
+                <option *ngFor="let rule of taxCalendarRules$ | async" [value]="rule.id">{{ rule.code }} — {{ rule.name }}</option>
+              </select>
+            </label>
+            <label>Έτος<input [(ngModel)]="calendarOverrideForm.periodYear" name="calendarOverrideYear" type="number" min="2000" max="2200" /></label>
+            <label>Μήνας<input [(ngModel)]="calendarOverrideForm.periodMonth" name="calendarOverrideMonth" type="number" min="1" max="12" /></label>
+            <label class="wide">Νέα προθεσμία<input [(ngModel)]="calendarOverrideForm.dueDate" name="calendarOverrideDueDate" type="date" required /></label>
+            <label class="wide">Πηγή<input [(ngModel)]="calendarOverrideForm.sourceUrl" name="calendarOverrideSourceUrl" type="url" placeholder="https://..." /></label>
+            <label class="wide">Αιτιολογία<textarea [(ngModel)]="calendarOverrideForm.notes" name="calendarOverrideNotes" rows="3"></textarea></label>
+            <div class="wide form-actions"><button class="btn btn-primary" type="submit"><span class="material-symbols-outlined">save</span> Αποθήκευση εξαίρεσης</button></div>
+          </form>
+        </article>
+      </div>
+
+      <section class="table-wrap calendar-rules" *ngIf="taxCalendarRules$ | async as rules">
+        <table>
+          <thead><tr><th>Κωδικός</th><th>Κανόνας</th><th>Εφαρμογή</th><th>Προθεσμία</th><th>Κατάσταση</th><th></th></tr></thead>
+          <tbody>
+            <tr *ngFor="let rule of rules">
+              <td><strong>{{ rule.code }}</strong></td>
+              <td>{{ rule.name }}<small>{{ typeLabel(rule.obligationType) }} · {{ recurrenceLabel(rule.recurrence) }}</small></td>
+              <td>{{ rule.applicableMonths || 'Κάθε μήνα' }}<small>{{ rule.accountingCategory || 'Όλα τα βιβλία' }} · {{ rule.vatRegime || 'Όλα τα καθεστώτα' }}</small></td>
+              <td>+{{ rule.dueMonthOffset }} μήνας, {{ rule.dueDay === 0 ? 'τέλος μήνα' : rule.dueDay + 'η' }}</td>
+              <td><span class="badge" [ngClass]="rule.isActive ? 'badge-success' : 'badge-neutral'">{{ rule.isActive ? 'Ενεργός' : 'Ανενεργός' }}</span></td>
+              <td class="row-actions"><button class="btn btn-xs btn-secondary" type="button" (click)="editTaxCalendarRule(rule)">Επεξεργασία</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </section>
   `,
   styles: [
     `
@@ -387,6 +487,51 @@ import {
         color: var(--err);
       }
 
+      .calendar-section {
+        margin-top: 28px;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .section-heading h2 {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+
+      .section-heading p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .calendar-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      textarea {
+        resize: vertical;
+      }
+
+      .check-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text);
+      }
+
+      .check-row input {
+        width: auto;
+      }
+
+      .calendar-rules {
+        margin-top: 16px;
+      }
+
       @media (max-width: 980px) {
         .work-grid,
         .form-grid,
@@ -404,8 +549,10 @@ import {
 })
 export class ObligationsPageComponent {
   private readonly obligationsApi = inject(ObligationsApiService);
+  private readonly auth = inject(AuthService);
   private readonly reload$ = new BehaviorSubject<void>(undefined);
   private readonly filters$ = new BehaviorSubject<ObligationFilters>({});
+  private readonly calendarReload$ = new BehaviorSubject<void>(undefined);
 
   readonly companies$ = inject(CompaniesApiService).findAll();
   readonly obligations$ = combineLatest([this.reload$, this.filters$]).pipe(
@@ -413,6 +560,9 @@ export class ObligationsPageComponent {
     tap((obligations) => {
       this.latestObligations = obligations;
     }),
+  );
+  readonly taxCalendarRules$ = this.calendarReload$.pipe(
+    switchMap(() => this.obligationsApi.taxCalendarRules()),
   );
 
   readonly today = new Date().toISOString().slice(0, 10);
@@ -446,6 +596,19 @@ export class ObligationsPageComponent {
     status: 'OPEN',
     recurrence: 'NONE',
   };
+  calendarRuleForm: TaxCalendarRulePayload = this.emptyTaxCalendarRuleForm();
+  calendarOverrideForm: TaxCalendarOverridePayload = {
+    taxCalendarRuleId: '',
+    periodYear: new Date().getFullYear(),
+    periodMonth: new Date().getMonth() + 1,
+    dueDate: this.today,
+    sourceUrl: '',
+    notes: '',
+  };
+
+  canManageTaxCalendar(): boolean {
+    return this.auth.hasAnyRole(ADMIN_ROLES);
+  }
 
   onFormTypeChange(): void {
     this.form.title = this.typeLabel(this.form.type);
@@ -505,6 +668,51 @@ export class ObligationsPageComponent {
       },
       error: (error: unknown) => this.showError(error),
     });
+  }
+
+  editTaxCalendarRule(rule: TaxCalendarRule): void {
+    this.calendarRuleForm = {
+      code: rule.code,
+      name: rule.name,
+      obligationType: rule.obligationType,
+      recurrence: rule.recurrence,
+      dueMonthOffset: rule.dueMonthOffset,
+      dueDay: rule.dueDay,
+      applicableMonths: rule.applicableMonths ?? '',
+      accountingCategory: rule.accountingCategory ?? '',
+      vatRegime: rule.vatRegime ?? '',
+      sourceUrl: rule.sourceUrl ?? '',
+      notes: rule.notes ?? '',
+      isActive: rule.isActive,
+    };
+  }
+
+  resetTaxCalendarRuleForm(): void {
+    this.calendarRuleForm = this.emptyTaxCalendarRuleForm();
+  }
+
+  saveTaxCalendarRule(): void {
+    this.clearMessages();
+    this.obligationsApi.upsertTaxCalendarRule(cleanCalendarRulePayload(this.calendarRuleForm)).subscribe({
+      next: () => {
+        this.message = 'Ο κανόνας φορολογικού ημερολογίου αποθηκεύτηκε.';
+        this.calendarReload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  saveTaxCalendarOverride(): void {
+    this.clearMessages();
+    this.obligationsApi
+      .upsertTaxCalendarOverride(cleanCalendarOverridePayload(this.calendarOverrideForm))
+      .subscribe({
+        next: () => {
+          this.message = 'Η εξαίρεση προθεσμίας αποθηκεύτηκε.';
+          this.reload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
   }
 
   markReady(obligation: OfficeObligation): void {
@@ -656,6 +864,23 @@ export class ObligationsPageComponent {
 
     this.errorMessage = 'Request failed.';
   }
+
+  private emptyTaxCalendarRuleForm(): TaxCalendarRulePayload {
+    return {
+      code: '',
+      name: '',
+      obligationType: 'VAT_RETURN',
+      recurrence: 'MONTHLY',
+      dueMonthOffset: 1,
+      dueDay: 0,
+      applicableMonths: '',
+      accountingCategory: '',
+      vatRegime: '',
+      sourceUrl: '',
+      notes: '',
+      isActive: true,
+    };
+  }
 }
 
 function addDaysIso(days: number): string {
@@ -670,4 +895,25 @@ function yesterdayIso(): string {
 
 function csvCell(value: unknown): string {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+function cleanCalendarRulePayload(payload: TaxCalendarRulePayload): TaxCalendarRulePayload {
+  return {
+    ...payload,
+    applicableMonths: payload.applicableMonths?.trim() || undefined,
+    accountingCategory: payload.accountingCategory?.trim() || undefined,
+    vatRegime: payload.vatRegime?.trim() || undefined,
+    sourceUrl: payload.sourceUrl?.trim() || undefined,
+    notes: payload.notes?.trim() || undefined,
+  };
+}
+
+function cleanCalendarOverridePayload(
+  payload: TaxCalendarOverridePayload,
+): TaxCalendarOverridePayload {
+  return {
+    ...payload,
+    sourceUrl: payload.sourceUrl?.trim() || undefined,
+    notes: payload.notes?.trim() || undefined,
+  };
 }

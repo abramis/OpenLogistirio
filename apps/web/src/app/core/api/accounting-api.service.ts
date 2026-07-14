@@ -212,6 +212,38 @@ export interface LedgerRow {
   runningBalance: number;
 }
 
+export interface YearEndClosePayload {
+  clientCompanyId: string;
+  fiscalYear: number;
+  resultAccountCode: string;
+  retainedEarningsAccountCode: string;
+}
+
+export interface YearEndPreview {
+  clientCompanyId: string;
+  fiscalYear: number;
+  resultAccount: { code: string; name: string };
+  retainedEarningsAccount: { code: string; name: string };
+  incomeRows: Array<{
+    accountCode: string;
+    accountName: string;
+    type: string;
+    debit: number;
+    credit: number;
+  }>;
+  result: { revenue: number; expenses: number; netResult: number };
+  closingEntry: { reference: string; debit: number; credit: number };
+  transferEntry?: {
+    reference: string;
+    resultDebit: number;
+    resultCredit: number;
+    retainedEarningsDebit: number;
+    retainedEarningsCredit: number;
+  };
+  alreadyClosed: boolean;
+  existingEntries: Array<{ id: string; entryNumber: string; reference?: string | null }>;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -224,6 +256,22 @@ export class AccountingApiService {
     return this.http.get<ChartAccount[]>(`${this.baseUrl}/accounts`, {
       params,
     });
+  }
+
+  yearEndPreview(payload: YearEndClosePayload): Observable<YearEndPreview> {
+    return this.http.post<YearEndPreview>(`${this.baseUrl}/year-end/preview`, payload);
+  }
+
+  closeYearEnd(payload: YearEndClosePayload): Observable<{
+    preview: YearEndPreview;
+    closingEntry: JournalEntry;
+    transferEntry?: JournalEntry;
+  }> {
+    return this.http.post<{
+      preview: YearEndPreview;
+      closingEntry: JournalEntry;
+      transferEntry?: JournalEntry;
+    }>(`${this.baseUrl}/year-end/close`, payload);
   }
 
   findPostingRules(clientCompanyId = ''): Observable<DocumentPostingRule[]> {
