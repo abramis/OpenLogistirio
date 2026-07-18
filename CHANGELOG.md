@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0-rc.5 - 2026-07-18
+
+- Made clean CI/release installs generate the Prisma client explicitly before migrations and tests.
+- Added structured Jest diagnostics and reliable handling of successful test results in CI.
+
 ## 0.2.0-rc.4 - 2026-07-18
 
 - Added the required XML validator to CI/release runners; all 120 API tests now pass in a clean
