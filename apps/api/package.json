@@ -12,6 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "prisma:generate": "dotenv -e ../../.env -- prisma generate",
+    "prisma:generate:production": "prisma generate",
     "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "prisma:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "prisma:deploy:production": "prisma migrate deploy",
