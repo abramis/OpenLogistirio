@@ -44,8 +44,7 @@ jobs:
           node-version: 22.22.3
           cache: npm
       - run: npm ci
-      - run: cp .env.example .env
-      - run: npm run prisma:deploy --workspace=@open-logistirio/api
+      - run: npm run prisma:deploy:production --workspace=@open-logistirio/api
       - run: timeout --signal=TERM --kill-after=15s 300s npm run lint --workspace=@open-logistirio/api
       - run: timeout --signal=TERM --kill-after=15s 300s npm run lint --workspace=@open-logistirio/web
       - run: timeout --signal=TERM --kill-after=15s 300s npm test --workspace=@open-logistirio/api -- --runInBand

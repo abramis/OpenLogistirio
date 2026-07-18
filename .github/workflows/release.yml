@@ -50,8 +50,7 @@ jobs:
       - name: Verify tag and workspace versions
         run: node scripts/verify-release-version.mjs "$GITHUB_REF_NAME"
       - run: npm ci
-      - run: cp .env.example .env
-      - run: npm run prisma:deploy --workspace=@open-logistirio/api
+      - run: npm run prisma:deploy:production --workspace=@open-logistirio/api
       - run: npm run release:check
       - name: Prepare image names
         run: |

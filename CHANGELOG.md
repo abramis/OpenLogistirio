@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0-rc.2 - 2026-07-18
+
+- Fixed CI and release migrations so they use the injected service database instead of loading
+  local-development `.env` values.
+
 ## 0.2.0-rc.1 - 2026-07-18
 
 First production-pilot release candidate for Greek accounting offices.
