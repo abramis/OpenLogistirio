@@ -11,13 +11,13 @@ set -e
 
 if [[ $status -ne 0 && ${GITHUB_ACTIONS:-false} == true && -s $result_file ]]; then
   summary=$(node -e '
-    const result = require(process.argv[1]);
+    const fs = require("node:fs");
+    const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
     const failures = result.testResults
-      .filter((suite) => suite.status === "failed")
       .flatMap((suite) => suite.assertionResults
         .filter((test) => test.status === "failed")
         .map((test) => `${suite.name}: ${test.fullName}\n${test.failureMessages.join("\n")}`));
-    process.stdout.write(failures.join("\n\n").slice(0, 12000));
+    process.stdout.write((failures.join("\n\n") || result.failureMessage || "Jest failed without assertion details.").slice(0, 12000));
   ' "$result_file")
   summary=${summary//'%'/'%25'}
   summary=${summary//$'\r'/'%0D'}
