@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0-rc.3 - 2026-07-18
+
+- Fixed the tax-calendar table collation so all 30 migrations apply successfully to a clean
+  MySQL 8.4 database.
+
 ## 0.2.0-rc.2 - 2026-07-18
 
 - Fixed CI and release migrations so they use the injected service database instead of loading

@@ -1,6 +1,6 @@
 {
   "name": "@open-logistirio/api",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.0-rc.3",
   "private": true,
   "description": "Open Logistirio API",
   "license": "AGPL-3.0-or-later",

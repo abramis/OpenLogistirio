@@ -19,7 +19,7 @@ CREATE TABLE `TaxCalendarRule` (
   UNIQUE INDEX `TaxCalendarRule_accountingOfficeId_code_key` (`accountingOfficeId`, `code`),
   INDEX `TaxCalRule_office_type_active_idx` (`accountingOfficeId`, `obligationType`, `isActive`),
   CONSTRAINT `TaxCalendarRule_accountingOfficeId_fkey` FOREIGN KEY (`accountingOfficeId`) REFERENCES `AccountingOffice`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE
-);
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE `TaxCalendarOverride` (
   `id` VARCHAR(191) NOT NULL,
@@ -37,4 +37,4 @@ CREATE TABLE `TaxCalendarOverride` (
   INDEX `TaxCalOverride_office_period_idx` (`accountingOfficeId`, `periodYear`, `periodMonth`),
   CONSTRAINT `TaxCalendarOverride_accountingOfficeId_fkey` FOREIGN KEY (`accountingOfficeId`) REFERENCES `AccountingOffice`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `TaxCalendarOverride_taxCalendarRuleId_fkey` FOREIGN KEY (`taxCalendarRuleId`) REFERENCES `TaxCalendarRule`(`id`) ON DELETE CASCADE ON UPDATE CASCADE
-);
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
