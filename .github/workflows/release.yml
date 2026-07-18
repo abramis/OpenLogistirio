@@ -47,6 +47,8 @@ jobs:
         with:
           node-version: 22.22.3
           cache: npm
+      - name: Install XML validation runtime
+        run: sudo apt-get update && sudo apt-get install --yes libxml2-utils
       - name: Verify tag and workspace versions
         run: node scripts/verify-release-version.mjs "$GITHUB_REF_NAME"
       - run: npm ci

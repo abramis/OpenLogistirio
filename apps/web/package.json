@@ -1,6 +1,6 @@
 {
   "name": "@open-logistirio/web",
-  "version": "0.2.0-rc.3",
+  "version": "0.2.0-rc.4",
   "private": true,
   "description": "Open Logistirio web client",
   "license": "AGPL-3.0-or-later",

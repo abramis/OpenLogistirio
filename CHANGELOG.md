@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0-rc.4 - 2026-07-18
+
+- Added the required XML validator to CI/release runners; all 120 API tests now pass in a clean
+  Node 22 container without a local `.env` file.
+
 ## 0.2.0-rc.3 - 2026-07-18
 
 - Fixed the tax-calendar table collation so all 30 migrations apply successfully to a clean
