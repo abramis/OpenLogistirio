@@ -12,11 +12,15 @@ export interface DependencyHealth {
 @Injectable()
 export class HealthService implements OnModuleDestroy {
   private readonly redis: Redis;
+  private readonly version: string;
+  private readonly gitSha: string;
 
   constructor(
     private readonly prisma: PrismaService,
     configService: ConfigService,
   ) {
+    this.version = configService.get<string>('APP_VERSION', 'development');
+    this.gitSha = configService.get<string>('GIT_SHA', 'unknown');
     this.redis = new Redis(configService.getOrThrow<string>('REDIS_URL'), {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
@@ -30,8 +34,13 @@ export class HealthService implements OnModuleDestroy {
     return {
       status: database.status === 'ok' && redis.status === 'ok' ? 'ok' : 'degraded',
       service: 'open-logistirio-api',
+      ...this.metadata(),
       dependencies: { database, redis },
     };
+  }
+
+  metadata() {
+    return { version: this.version, gitSha: this.gitSha };
   }
 
   async onModuleDestroy() {

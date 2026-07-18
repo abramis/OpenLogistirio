@@ -11,29 +11,29 @@
     "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
-    "@angular/animations": "latest",
-    "@angular/common": "latest",
-    "@angular/compiler": "latest",
-    "@angular/core": "latest",
-    "@angular/forms": "latest",
-    "@angular/platform-browser": "latest",
-    "@angular/router": "latest",
+    "@angular/animations": "22.0.5",
+    "@angular/common": "22.0.5",
+    "@angular/compiler": "22.0.5",
+    "@angular/core": "22.0.5",
+    "@angular/forms": "22.0.5",
+    "@angular/platform-browser": "22.0.5",
+    "@angular/router": "22.0.5",
     "read-excel-file": "^9.3.1",
-    "rxjs": "latest",
-    "tslib": "latest",
-    "zone.js": "latest"
+    "rxjs": "7.8.2",
+    "tslib": "2.8.1",
+    "zone.js": "0.16.2"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "latest",
-    "@angular/cli": "latest",
-    "@angular/compiler-cli": "latest",
-    "@types/jasmine": "latest",
-    "jasmine-core": "latest",
-    "karma": "latest",
-    "karma-chrome-launcher": "latest",
-    "karma-coverage": "latest",
-    "karma-jasmine": "latest",
-    "karma-jasmine-html-reporter": "latest",
-    "typescript": "latest"
+    "@angular-devkit/build-angular": "22.0.5",
+    "@angular/cli": "22.0.5",
+    "@angular/compiler-cli": "22.0.5",
+    "@types/jasmine": "6.0.0",
+    "jasmine-core": "6.3.0",
+    "karma": "6.4.4",
+    "karma-chrome-launcher": "3.2.0",
+    "karma-coverage": "2.2.1",
+    "karma-jasmine": "5.1.0",
+    "karma-jasmine-html-reporter": "2.2.0",
+    "typescript": "6.0.3"
   }
 }

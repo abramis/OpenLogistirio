@@ -14,6 +14,7 @@ export class HealthController {
     return {
       status: 'ok',
       service: 'open-logistirio-api',
+      ...this.healthService.metadata(),
     };
   }
 

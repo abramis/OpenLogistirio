@@ -7,15 +7,16 @@ client companies, documents, VAT categories, AADE myDATA integration boundaries,
 exports, dashboards, and office tasks. It does not copy proprietary products, screens, texts,
 database structures, icons, workflows, branding, or behavior.
 
-## MVP Scope
+## Current scope
 
-The first iteration focuses on authentication, accounting offices, client companies,
-documents, a revenue-expense book, general-ledger foundations, a mock and AADE-test
-myDATA integration layer, audit logs, dashboards, office obligations, fixed assets,
-exports, and tests.
+The current release focuses on the daily work of a small or medium Greek accounting office:
+multiple client companies, sales and purchase documents, revenue-expense books, VAT workpapers,
+myDATA reconciliation and controlled classifications, accounting entries, period close, fixed
+assets, obligations, imports, supporting documents, audit logs and backups.
 
-Payroll, income tax declarations, and official declaration submissions are intentionally out of
-scope for the MVP.
+Payroll/APD/ERGANI, income-tax forms and official declaration submissions are not implemented.
+The software must therefore be piloted alongside the office's existing submission process; it is
+not yet a complete replacement for every system used by a Greek accounting office.
 
 ## Stack
 
@@ -229,6 +230,15 @@ cp .env.production.example .env.production
 docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
 ```
 
+Create the first real accounting-office administrator once, without loading demo data:
+
+```bash
+PRODUCTION_ENV_FILE=.env.production ./scripts/production-bootstrap.sh
+```
+
+The bootstrap refuses weak passwords, does not print the password, and refuses to create a second
+office after users already exist. Never run the demo `seed` command in production.
+
 The `migrate` job must complete successfully before the API starts. MySQL and Redis are internal
 services; only the web reverse proxy is published. The API readiness probe checks both dependencies
 at `/api/health/ready`. The `backup` and `files-backup` services write atomic, SHA-256-protected
@@ -250,10 +260,12 @@ also available for download from the web UI.
 Run checks:
 
 ```bash
-npm run lint
-npm run test
-npm run build
+npm run release:check
 ```
+
+Every browser test in the release check has a hard time limit. The command also verifies that the
+production Angular bundle does not contain the local-development API URL. It does not publish a
+release or write to AADE.
 
 ## Database Note
 

@@ -3,6 +3,7 @@ import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { MyDataApiService } from '../core/api/mydata-api.service';
+import { SystemApiService } from '../core/api/system-api.service';
 import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
 
 @Component({
@@ -118,7 +119,7 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
 
         <div class="sidebar-footer">
           <div class="ws-label">Ενεργό γραφείο</div>
-          <div class="ws-name">Ανοιχτό Λογιστήριο Αθήνας</div>
+          <div class="ws-name">{{ auth.user()?.accountingOffice?.name || 'Open Logistirio' }}</div>
           <span class="aade-badge" *ngIf="myDataEnvironment$ | async as environment">
             <span class="material-symbols-outlined">science</span>
             {{
@@ -129,6 +130,10 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
                   : 'AADE test mode'
             }}
           </span>
+          <div class="build-info" *ngIf="systemHealth$ | async as health">
+            v{{ health.version }}
+            <span *ngIf="health.gitSha !== 'unknown'">· {{ health.gitSha.slice(0, 7) }}</span>
+          </div>
         </div>
       </aside>
 
@@ -302,6 +307,13 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
         font-size: 13px;
       }
 
+      .build-info {
+        margin-top: 9px;
+        color: #607684;
+        font-size: 0.625rem;
+        font-variant-numeric: tabular-nums;
+      }
+
       /* Content */
       .content {
         min-width: 0;
@@ -406,7 +418,9 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
 export class ShellComponent {
   readonly auth = inject(AuthService);
   private readonly myDataApi = inject(MyDataApiService);
+  private readonly systemApi = inject(SystemApiService);
   readonly myDataEnvironment$ = this.myDataApi.environment();
+  readonly systemHealth$ = this.systemApi.health();
 
   canViewAudit(): boolean {
     return this.auth.hasAnyRole(ACCOUNTING_CONTROL_ROLES);

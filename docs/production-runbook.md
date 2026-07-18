@@ -21,11 +21,26 @@ cp .env.production.example .env.production
 chmod 600 .env.production
 docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
 docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+PRODUCTION_ENV_FILE=.env.production ./scripts/production-bootstrap.sh
 ./scripts/production-smoke-check.sh https://your-domain.example
 ```
 
 Πριν από το `up`, αλλάζουμε όλα τα placeholder secrets. Τα JWT, MySQL, Redis και restore-drill
 secrets είναι διαφορετικά μεταξύ τους και παράγονται από ασφαλή random generator/password manager.
+Το production bootstrap εκτελείται μία φορά, δημιουργεί το πραγματικό λογιστικό γραφείο και τον
+πρώτο διαχειριστή και αρνείται να φορτώσει demo χρήστη. Δεν τρέχουμε ποτέ `prisma/seed.ts` σε
+production.
+
+## 2.1 Release gate πριν από εγκατάσταση
+
+```sh
+npm ci
+npm run release:check
+```
+
+Το release gate έχει αυστηρά timeouts, κάνει lint/tests/build και ελέγχει ότι το production web
+bundle δεν δείχνει στο localhost. Πριν από δημόσιο production tag ακολουθούμε και το
+[release checklist](release-checklist.md).
 
 ## 3. Πολιτική AADE
 

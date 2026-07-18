@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: open_logistirio_release
+          MYSQL_USER: openlog
+          MYSQL_PASSWORD: openlog_password
+          MYSQL_ROOT_PASSWORD: root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uopenlog -popenlog_password --silent"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: mysql://openlog:openlog_password@127.0.0.1:3306/open_logistirio_release
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_ACCESS_SECRET: release-access-secret-at-least-16-characters
+      JWT_REFRESH_SECRET: release-refresh-secret-at-least-16-characters
+      FRONTEND_ORIGIN: http://localhost:4200
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - name: Verify tag and workspace versions
+        run: node scripts/verify-release-version.mjs "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: cp .env.example .env
+      - run: npm run prisma:deploy --workspace=@open-logistirio/api
+      - run: npm run release:check
+      - name: Prepare image names
+        run: |
+          repository="${GITHUB_REPOSITORY,,}"
+          version="${GITHUB_REF_NAME#v}"
+          echo "IMAGE_BASE=ghcr.io/${repository}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+      - name: Sign in to GitHub Container Registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish API image
+        run: |
+          docker build -f apps/api/Dockerfile.production \
+            --build-arg APP_VERSION="$RELEASE_VERSION" \
+            --build-arg GIT_SHA="$GITHUB_SHA" \
+            -t "$IMAGE_BASE-api:$RELEASE_VERSION" .
+          docker push "$IMAGE_BASE-api:$RELEASE_VERSION"
+      - name: Build and publish web image
+        run: |
+          docker build -f apps/web/Dockerfile.production \
+            -t "$IMAGE_BASE-web:$RELEASE_VERSION" .
+          docker push "$IMAGE_BASE-web:$RELEASE_VERSION"
+      - name: Publish stable aliases
+        if: ${{ !contains(env.RELEASE_VERSION, '-') }}
+        run: |
+          docker tag "$IMAGE_BASE-api:$RELEASE_VERSION" "$IMAGE_BASE-api:latest"
+          docker tag "$IMAGE_BASE-web:$RELEASE_VERSION" "$IMAGE_BASE-web:latest"
+          docker push "$IMAGE_BASE-api:latest"
+          docker push "$IMAGE_BASE-web:latest"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prerelease=()
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            prerelease+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            --title "Open Logistirio $RELEASE_VERSION" \
+            "${prerelease[@]}"

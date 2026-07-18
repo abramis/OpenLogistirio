@@ -39,15 +39,17 @@ async function bootstrap() {
   );
   app.useGlobalInterceptors(new RequestLoggingInterceptor());
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Open Logistirio API')
-    .setDescription('Independent open-source ERP API for Greek accounting offices.')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
+  if (configService.get<boolean>('API_DOCS_ENABLED', false)) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Open Logistirio API')
+      .setDescription('Independent open-source ERP API for Greek accounting offices.')
+      .setVersion(configService.get<string>('APP_VERSION', 'development'))
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = Number(configService.get('API_PORT', 3000));
   await app.listen(port, '0.0.0.0');

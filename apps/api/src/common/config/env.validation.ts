@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_VERSION: z.string().min(1).default('development'),
+  GIT_SHA: z.string().min(1).default('unknown'),
+  API_DOCS_ENABLED: z
+    .preprocess((value) => value === true || value === 'true', z.boolean())
+    .default(false),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   JWT_ACCESS_SECRET: z.string().min(16),

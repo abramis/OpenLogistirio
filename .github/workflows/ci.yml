@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -7,6 +10,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       mysql:
         image: mysql:8.4
@@ -42,9 +46,11 @@ jobs:
       - run: npm ci
       - run: cp .env.example .env
       - run: npm run prisma:deploy --workspace=@open-logistirio/api
-      - run: npm run lint --workspace=@open-logistirio/api
-      - run: npm run lint --workspace=@open-logistirio/web
-      - run: npm test --workspace=@open-logistirio/api -- --runInBand
-      - run: npm test --workspace=@open-logistirio/web -- --watch=false --browsers=ChromeHeadless
-      - run: npm run build --workspace=@open-logistirio/api
-      - run: npm run build --workspace=@open-logistirio/web
+      - run: timeout --signal=TERM --kill-after=15s 300s npm run lint --workspace=@open-logistirio/api
+      - run: timeout --signal=TERM --kill-after=15s 300s npm run lint --workspace=@open-logistirio/web
+      - run: timeout --signal=TERM --kill-after=15s 300s npm test --workspace=@open-logistirio/api -- --runInBand
+      - run: timeout --signal=TERM --kill-after=15s 180s npm test --workspace=@open-logistirio/web
+      - run: timeout --signal=TERM --kill-after=15s 300s npm run build --workspace=@open-logistirio/api
+      - run: timeout --signal=TERM --kill-after=15s 300s npm run build --workspace=@open-logistirio/web
+      - name: Reject development API URL in production bundle
+        run: '! grep -R -F -q "http://localhost:3000/api" apps/web/dist/web/browser'

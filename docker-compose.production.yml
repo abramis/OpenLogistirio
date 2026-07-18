@@ -40,13 +40,37 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    command: npm run prisma:deploy --workspace=@open-logistirio/api
+    command: npm run prisma:deploy:production --workspace=@open-logistirio/api
+    restart: 'no'
+
+  bootstrap:
+    profiles: ['bootstrap']
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.production
+      target: build
+    env_file: ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      BOOTSTRAP_OFFICE_NAME: ${BOOTSTRAP_OFFICE_NAME:-}
+      BOOTSTRAP_OFFICE_VAT: ${BOOTSTRAP_OFFICE_VAT:-}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_FULL_NAME: ${BOOTSTRAP_ADMIN_FULL_NAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: npm run bootstrap:production --workspace=@open-logistirio/api
     restart: 'no'
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile.production
+      args:
+        APP_VERSION: ${APP_VERSION:-development}
+        GIT_SHA: ${GIT_SHA:-unknown}
     restart: unless-stopped
     env_file: ${PRODUCTION_ENV_FILE:-.env.production}
     environment:

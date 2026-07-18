@@ -11,19 +11,37 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci
 
 COPY . .
-RUN npm run prisma:generate --workspace=@open-logistirio/api \
+RUN npm exec --workspace=@open-logistirio/api -- prisma generate \
   && npm run build --workspace=@open-logistirio/api
+
+FROM node:22.22.3-alpine AS production-dependencies
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci --omit=dev --omit=peer --ignore-scripts \
+  --workspace=@open-logistirio/api --include-workspace-root=false
+COPY --from=build /workspace/apps/api/node_modules/.prisma ./apps/api/node_modules/.prisma
 
 FROM node:22.22.3-alpine AS runner
 
 WORKDIR /workspace
+ARG APP_VERSION=development
+ARG GIT_SHA=unknown
 ENV NODE_ENV=production
+ENV APP_VERSION=$APP_VERSION
+ENV GIT_SHA=$GIT_SHA
 
 RUN apk add --no-cache mysql-client libxml2-utils \
   && addgroup -S openlog \
   && adduser -S openlog -G openlog
 
-COPY --from=build /workspace/node_modules ./node_modules
+COPY --from=production-dependencies /workspace/node_modules ./node_modules
+COPY --from=production-dependencies /workspace/apps/api/node_modules/@prisma/client ./apps/api/node_modules/@prisma/client
+COPY --from=production-dependencies /workspace/apps/api/node_modules/.prisma ./apps/api/node_modules/.prisma
 COPY --from=build /workspace/apps/api/dist ./apps/api/dist
 COPY --from=build /workspace/apps/api/prisma ./apps/api/prisma
 COPY --from=build /workspace/apps/api/package.json ./apps/api/package.json
