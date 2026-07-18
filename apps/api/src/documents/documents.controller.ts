@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { OFFICE_WRITE_ROLES } from '../auth/role-groups';
+import { ACCOUNTING_CONTROL_ROLES, OFFICE_WRITE_ROLES } from '../auth/role-groups';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { SendMyDataDto } from '../mydata/dto/send-mydata.dto';
+import {
+  ApproveExpenseClassificationDto,
+  BatchApproveExpenseClassificationDto,
+} from '../mydata/dto/approve-expense-classification.dto';
 import { MyDataService } from '../mydata/mydata.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { FindDocumentsQueryDto } from './dto/find-documents-query.dto';
@@ -81,6 +85,25 @@ export class DocumentsController {
   @Roles(...OFFICE_WRITE_ROLES)
   prepareExpenseMyData(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.myDataService.prepareExpense(tenant, id);
+  }
+
+  @Post('mydata/expense-approval/batch')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  approveExpenseClassificationBatch(
+    @CurrentTenant() tenant: TenantContext,
+    @Body() dto: BatchApproveExpenseClassificationDto,
+  ) {
+    return this.myDataService.approveExpenseClassificationBatch(tenant, dto);
+  }
+
+  @Post(':id/mydata/expense-approval')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  approveExpenseClassification(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: ApproveExpenseClassificationDto,
+  ) {
+    return this.myDataService.approveExpenseClassification(tenant, id, dto);
   }
 
   @Post(':id/mydata/send-expense-mock')

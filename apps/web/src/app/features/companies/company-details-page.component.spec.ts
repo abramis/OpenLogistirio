@@ -48,6 +48,12 @@ describe('CompanyDetailsPageComponent', () => {
         },
       ]),
     ),
+    findMyDataClassificationProfiles: jasmine
+      .createSpy('findMyDataClassificationProfiles')
+      .and.returnValue(of([])),
+    upsertMyDataClassificationProfile: jasmine
+      .createSpy('upsertMyDataClassificationProfile')
+      .and.returnValue(of({})),
     applySetupTemplate: jasmine.createSpy('applySetupTemplate').and.returnValue(
       of({
         templateId: 'SIMPLE_BOOKS_ELP',

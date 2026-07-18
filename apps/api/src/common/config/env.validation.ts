@@ -11,6 +11,7 @@ const environmentSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   FRONTEND_ORIGIN: z.string().url().default('http://localhost:4200'),
   BACKUP_DIR: z.string().default('./backups'),
+  BACKUP_MAX_AGE_HOURS: z.coerce.number().int().positive().default(36),
   SUPPORTING_DOCUMENTS_DIR: z.string().default('./storage/supporting-documents'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(240),
@@ -18,12 +19,20 @@ const environmentSchema = z.object({
     .preprocess((value) => value === true || value === 'true', z.boolean())
     .default(false),
   AADE_MYDATA_ENV: z.enum(['test', 'production']).default('test'),
+  AADE_MYDATA_PRODUCTION_READ_ENABLED: z
+    .preprocess((value) => value === true || value === 'true', z.boolean())
+    .default(false),
   AADE_MYDATA_PRODUCTION_ENABLED: z
     .preprocess((value) => value === true || value === 'true', z.boolean())
     .default(false),
   AADE_MYDATA_USER_ID: z.string().optional(),
   AADE_MYDATA_SUBSCRIPTION_KEY: z.string().optional(),
   AADE_MYDATA_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  MYDATA_SCHEDULED_SYNC_ENABLED: z
+    .preprocess((value) => value === true || value === 'true', z.boolean())
+    .default(false),
+  MYDATA_SCHEDULED_SYNC_CRON: z.string().default('0 2 * * *'),
+  MYDATA_SCHEDULED_SYNC_MAX_PAGES: z.coerce.number().int().min(1).max(20).default(10),
   AADE_MYDATA_TEST_SEND_INVOICES_URL: z
     .string()
     .url()

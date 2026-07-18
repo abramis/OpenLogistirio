@@ -8,6 +8,7 @@ import {
   DocumentListItem,
   DocumentCorrectionChainItem,
   DocumentsApiService,
+  ExpenseClassificationPreview,
   TransmissionAttempt,
 } from '../../core/api/documents-api.service';
 
@@ -207,6 +208,9 @@ import {
                 <small *ngIf="document.myDataCancellationMark">
                   Cancellation: {{ document.myDataCancellationMark }}
                 </small>
+                <small *ngIf="document.expenseClassificationApprovalStatus">
+                  Expense approval: {{ expenseApprovalLabel(document.expenseClassificationApprovalStatus) }}
+                </small>
               </td>
               <td class="doc-actions">
                 <button
@@ -244,6 +248,15 @@ import {
                   (click)="prepareExpense(document)"
                 >
                   <span class="material-symbols-outlined">fact_check</span> Expense XML
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-primary"
+                  title="Έγκριση χαρακτηρισμού εξόδου"
+                  *ngIf="document.expenseClassificationApprovalStatus === 'PENDING'"
+                  (click)="approveExpense(document)"
+                >
+                  <span class="material-symbols-outlined">verified</span> Έγκριση
                 </button>
                 <button
                   type="button"
@@ -348,6 +361,42 @@ import {
         </div>
       </ng-template>
     </ng-container>
+
+    <div class="card preview-panel expense-preview" *ngIf="expensePreview as preview">
+      <div class="preview-header">
+        <div>
+          <h2 class="card-title">
+            <span class="material-symbols-outlined">fact_check</span>
+            Έλεγχος χαρακτηρισμού εξόδου
+          </h2>
+          <small>MARK {{ preview.invoiceMark }} · {{ preview.lines.length }} γραμμές</small>
+        </div>
+        <button type="button" class="btn btn-sm btn-secondary" (click)="expensePreview = undefined">
+          Κλείσιμο
+        </button>
+      </div>
+      <div class="expense-preview-body">
+        <table>
+          <thead><tr><th>#</th><th>Περιγραφή</th><th>Καθαρή</th><th>ΦΠΑ</th><th>Τύπος</th><th>Κατηγορία</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let line of preview.lines">
+              <td>{{ line.lineNumber }}</td>
+              <td>{{ line.description || '—' }}</td>
+              <td>{{ line.netAmount | number: '1.2-2' }} €</td>
+              <td>{{ line.vatAmount | number: '1.2-2' }} €</td>
+              <td>{{ line.expenseClassificationType }}</td>
+              <td>{{ line.expenseClassificationCategory }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="expense-preview-actions">
+          <span>Η έγκριση δεν αποστέλλει στην ΑΑΔΕ. Ξεκλειδώνει μόνο το ελεγχόμενο production send.</span>
+          <button class="btn btn-primary" type="button" (click)="approvePreparedExpense()">
+            Έγκριση μετά τον έλεγχο
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- XML Preview -->
     <div class="card preview-panel" *ngIf="xmlPreview">
@@ -516,6 +565,23 @@ import {
         padding: 12px 18px;
         border-bottom: 1px solid var(--border);
       }
+      .expense-preview {
+        border-left: 4px solid var(--primary);
+      }
+      .expense-preview-body {
+        display: grid;
+        gap: 14px;
+        padding: 14px 18px;
+        overflow-x: auto;
+      }
+      .expense-preview-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--text-2);
+        font-size: 0.8125rem;
+      }
 
       .xml-pre {
         overflow-x: auto;
@@ -591,6 +657,7 @@ export class DocumentsListPageComponent {
   );
   filters = this.defaultFilters();
   xmlPreview = '';
+  expensePreview?: ExpenseClassificationPreview;
   history: TransmissionAttempt[] = [];
   correctionChain: DocumentCorrectionChainItem[] = [];
   message = '';
@@ -758,8 +825,36 @@ export class DocumentsListPageComponent {
     this.clearMessages();
     this.documentsApi.prepareExpenseMyData(document.id).subscribe({
       next: (response) => {
+        this.expensePreview = response.preview;
         this.xmlPreview = response.xml;
         this.message = `Expense XML prepared for ${document.series || '-'}/${document.documentNumber}.`;
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  approveExpense(document: DocumentListItem): void {
+    if (!confirm('Να εγκριθεί ο ελεγμένος χαρακτηρισμός εξόδου;')) return;
+    this.clearMessages();
+    this.documentsApi.approveExpenseClassification(document.id, 'APPROVE').subscribe({
+      next: () => {
+        this.message = 'Ο χαρακτηρισμός εγκρίθηκε. Δεν έγινε αποστολή στην ΑΑΔΕ.';
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  approvePreparedExpense(): void {
+    const documentId = this.expensePreview?.documentId;
+    if (!documentId) return;
+    if (!confirm('Να εγκριθεί η προεπισκόπηση μετά τον λογιστικό έλεγχο;')) return;
+    this.clearMessages();
+    this.documentsApi.approveExpenseClassification(documentId, 'APPROVE').subscribe({
+      next: () => {
+        this.message = 'Η προεπισκόπηση εγκρίθηκε. Δεν έγινε αποστολή στην ΑΑΔΕ.';
+        this.expensePreview = undefined;
         this.reload$.next();
       },
       error: (error: unknown) => this.showError(error),
@@ -952,6 +1047,17 @@ export class DocumentsListPageComponent {
       RETAIL_RECEIPT: 'Απόδειξη λιανικής',
     };
     return labels[documentType] ?? documentType;
+  }
+
+  expenseApprovalLabel(status: string): string {
+    const labels: Record<string, string> = {
+      NOT_REQUESTED: 'δεν ζητήθηκε',
+      PENDING: 'αναμένει έλεγχο',
+      APPROVED: 'εγκρίθηκε',
+      REJECTED: 'απορρίφθηκε',
+      CONSUMED: 'στάλθηκε',
+    };
+    return labels[status] ?? status;
   }
 
   correctionRelationLabel(item: DocumentCorrectionChainItem): string {

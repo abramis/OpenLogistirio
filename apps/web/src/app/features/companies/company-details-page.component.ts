@@ -154,13 +154,14 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
           </dl>
         </div>
 
-        <div class="card detail-section setup-section">
-          <div class="card-header">
+        <details class="card detail-section setup-section disclosure-card">
+          <summary class="card-header">
             <h2 class="card-title">
               <span class="material-symbols-outlined">rule_settings</span>
               Παραμετροποίηση
             </h2>
-          </div>
+            <span class="summary-hint">Πρότυπα και βασικές ρυθμίσεις</span>
+          </summary>
           <div class="setup-panel">
             <label class="field">
               <span class="field-label">Πρότυπο</span>
@@ -201,15 +202,16 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
               </div>
             </div>
           </ng-container>
-        </div>
+        </details>
 
-        <div class="card detail-section classification-section">
-          <div class="card-header">
+        <details class="card detail-section classification-section disclosure-card">
+          <summary class="card-header">
             <h2 class="card-title">
               <span class="material-symbols-outlined">category</span>
               Προφίλ χαρακτηρισμών myDATA
             </h2>
-          </div>
+            <span class="summary-hint">Σύνθετη ρύθμιση ανά κίνηση και γραμμή</span>
+          </summary>
           <p class="section-note">
             Εφαρμόζονται αυτόματα στις γραμμές που δεν έχουν ρητό χαρακτηρισμό. Όσο πιο συγκεκριμένο
             το προφίλ, τόσο υψηλότερη η προτεραιότητά του.
@@ -299,7 +301,7 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
               </div>
             </div>
           </ng-container>
-        </div>
+        </details>
 
         <div class="card detail-section reconciliation-section">
           <div class="card-header">
@@ -495,6 +497,22 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
         min-width: 0;
       }
 
+      .summary-hint {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 0.74rem;
+        font-weight: 500;
+      }
+
+      .disclosure-card > .card-header {
+        align-items: center;
+        border-bottom: 0;
+      }
+
+      .disclosure-card[open] > .card-header {
+        border-bottom: 1px solid var(--border);
+      }
+
       .section-note {
         margin: 0 18px 14px;
         color: var(--muted);
@@ -566,6 +584,7 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
       }
 
       .setup-section,
+      .classification-section,
       .movements-section,
       .reconciliation-section {
         grid-column: 1 / -1;

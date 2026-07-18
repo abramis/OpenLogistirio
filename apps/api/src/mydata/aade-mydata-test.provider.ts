@@ -25,6 +25,10 @@ export class AadeMyDataTestProvider implements MyDataProvider {
     private readonly xmlValidationService: MyDataXmlValidationService,
   ) {}
 
+  configuredEnvironment(): 'test' | 'production' {
+    return this.configService.get<'test' | 'production'>('AADE_MYDATA_ENV', 'test');
+  }
+
   // Official AADE myDATA ERP REST API technical description checked: v2.0.2,
   // June 2026, test SendInvoices URL. Before enabling production, re-check the
   // latest official AADE specs, XSDs, authentication and test environment.
@@ -237,6 +241,7 @@ export class AadeMyDataTestProvider implements MyDataProvider {
       request.source === 'REQUEST_TRANSMITTED_DOCS'
         ? 'AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL'
         : 'AADE_MYDATA_PRODUCTION_REQUEST_DOCS_URL',
+      'read',
     );
     const timeoutMs = this.configService.get<number>('AADE_MYDATA_TIMEOUT_MS', 15000);
     const url = new URL(config.endpoint);
@@ -308,6 +313,7 @@ export class AadeMyDataTestProvider implements MyDataProvider {
     credentialEnvPrefix: string | undefined,
     testUrlEnvName: string,
     productionUrlEnvName: string,
+    access: 'read' | 'write' = 'write',
   ) {
     const resolvedCredentialEnvPrefix = credentialEnvPrefix ?? 'AADE_MYDATA';
     const userIdEnvName = `${resolvedCredentialEnvPrefix}_USER_ID`;
@@ -317,6 +323,10 @@ export class AadeMyDataTestProvider implements MyDataProvider {
     const environment = this.configService.get<'test' | 'production'>('AADE_MYDATA_ENV', 'test');
     const productionEnabled = this.configService.get<boolean>(
       'AADE_MYDATA_PRODUCTION_ENABLED',
+      false,
+    );
+    const productionReadEnabled = this.configService.get<boolean>(
+      'AADE_MYDATA_PRODUCTION_READ_ENABLED',
       false,
     );
     const endpoint =
@@ -330,9 +340,15 @@ export class AadeMyDataTestProvider implements MyDataProvider {
       );
     }
 
-    if (environment === 'production' && !productionEnabled) {
+    if (environment === 'production' && access === 'read' && !productionReadEnabled) {
       throw new BadRequestException(
-        'AADE myDATA production sends are disabled. Set AADE_MYDATA_PRODUCTION_ENABLED=true only after official production credentials, URLs, XSD validation, and accountant approval are ready.',
+        'AADE myDATA production reads are disabled. Set AADE_MYDATA_PRODUCTION_READ_ENABLED=true only after production API credentials and client authorization are ready.',
+      );
+    }
+
+    if (environment === 'production' && access === 'write' && !productionEnabled) {
+      throw new BadRequestException(
+        'AADE myDATA production writes are disabled. Set AADE_MYDATA_PRODUCTION_ENABLED=true only for an explicitly approved document or batch after official production credentials, URLs, XSD validation, and accountant approval are ready.',
       );
     }
 

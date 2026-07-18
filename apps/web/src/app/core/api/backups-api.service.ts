@@ -7,12 +7,29 @@ export interface BackupFileInfo {
   fileName: string;
   sizeBytes: number;
   createdAt: string;
+  checksumSha256: string | null;
 }
 
 export interface RestoreBackupResult {
   restored: boolean;
   restoredFrom: string;
   safetyBackup: BackupFileInfo;
+}
+
+export interface BackupArtifactStatus {
+  fileName: string | null;
+  sizeBytes: number;
+  createdAt: string | null;
+  ageHours: number | null;
+  checksumAvailable: boolean;
+  fresh: boolean;
+}
+
+export interface BackupOperationsStatus {
+  healthy: boolean;
+  maxAgeHours: number;
+  database: BackupArtifactStatus;
+  supportingDocuments: BackupArtifactStatus;
 }
 
 @Injectable({
@@ -24,6 +41,10 @@ export class BackupsApiService {
 
   list(): Observable<BackupFileInfo[]> {
     return this.http.get<BackupFileInfo[]>(this.baseUrl, {});
+  }
+
+  status(): Observable<BackupOperationsStatus> {
+    return this.http.get<BackupOperationsStatus>(`${this.baseUrl}/status`);
   }
 
   create(): Observable<BackupFileInfo> {

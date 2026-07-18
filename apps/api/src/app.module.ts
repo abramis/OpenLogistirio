@@ -21,6 +21,7 @@ import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { PeriodClosesModule } from './period-closes/period-closes.module';
 import { SupportingDocumentsModule } from './supporting-documents/supporting-documents.module';
+import { DigitalMovementModule } from './digital-movement/digital-movement.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { SupportingDocumentsModule } from './supporting-documents/supporting-doc
     UsersModule,
     PeriodClosesModule,
     SupportingDocumentsModule,
+    DigitalMovementModule,
   ],
 })
 export class AppModule {}

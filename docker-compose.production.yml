@@ -91,15 +91,162 @@ services:
         while true; do
           timestamp=$$(date -u +%Y%m%d-%H%M%S)
           target=/backups/open-logistirio-$${timestamp}.sql
+          partial=$${target}.partial
+          trap 'rm -f "$$partial"' EXIT INT TERM
           MYSQL_PWD="$$MYSQL_PASSWORD" mysqldump \
             --host="$$MYSQL_HOST" --user="$$MYSQL_USER" \
             --single-transaction --quick --routines --triggers --events \
-            "$$MYSQL_DATABASE" > "$$target"
-          test -s "$$target"
+            "$$MYSQL_DATABASE" > "$$partial"
+          test -s "$$partial"
+          mv "$$partial" "$$target"
+          trap - EXIT INT TERM
+          cd /backups
+          sha256sum "$$(basename "$$target")" > "$$(basename "$$target").sha256"
           find /backups -type f -name 'open-logistirio-*.sql' \
+            -mtime +"$$BACKUP_RETENTION_DAYS" -delete
+          find /backups -type f -name 'open-logistirio-*.sql.sha256' \
             -mtime +"$$BACKUP_RETENTION_DAYS" -delete
           sleep "$$BACKUP_INTERVAL_SECONDS"
         done
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          latest=$$(find /backups -maxdepth 1 -type f -name 'open-logistirio-*.sql' | sort | tail -n 1);
+          test -n "$$latest" && cd /backups && sha256sum -c "$$(basename "$$latest").sha256"
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 2m
+
+  files-backup:
+    image: alpine:3.20
+    restart: unless-stopped
+    environment:
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - backup-data:/backups
+      - supporting-documents-data:/supporting-documents:ro
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        while true; do
+          timestamp=$$(date -u +%Y%m%d-%H%M%S)
+          target=/backups/open-logistirio-files-$${timestamp}.tar.gz
+          partial=$${target}.partial
+          trap 'rm -f "$$partial"' EXIT INT TERM
+          tar -C /supporting-documents -czf "$$partial" .
+          test -s "$$partial"
+          mv "$$partial" "$$target"
+          trap - EXIT INT TERM
+          cd /backups
+          sha256sum "$$(basename "$$target")" > "$$(basename "$$target").sha256"
+          find /backups -type f -name 'open-logistirio-files-*.tar.gz' \
+            -mtime +"$$BACKUP_RETENTION_DAYS" -delete
+          find /backups -type f -name 'open-logistirio-files-*.tar.gz.sha256' \
+            -mtime +"$$BACKUP_RETENTION_DAYS" -delete
+          sleep "$$BACKUP_INTERVAL_SECONDS"
+        done
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          latest=$$(find /backups -maxdepth 1 -type f -name 'open-logistirio-files-*.tar.gz' | sort | tail -n 1);
+          test -n "$$latest" && cd /backups && sha256sum -c "$$(basename "$$latest").sha256"
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 2m
+
+  restore-drill-db:
+    profiles: ['restore-drill']
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RESTORE_DRILL_MYSQL_ROOT_PASSWORD:-isolated-restore-drill-only}
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  restore-drill:
+    profiles: ['restore-drill']
+    image: mysql:8.4
+    environment:
+      RESTORE_DRILL_MYSQL_ROOT_PASSWORD: ${RESTORE_DRILL_MYSQL_ROOT_PASSWORD:-isolated-restore-drill-only}
+    volumes:
+      - backup-data:/backups:ro
+      - ./restore-drills:/reports
+    depends_on:
+      restore-drill-db:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        latest=$$(find /backups -maxdepth 1 -type f \
+          -name 'open-logistirio-*.sql' ! -name '*-pre-restore.sql' | sort | tail -n 1)
+        test -n "$$latest"
+        test -s "$$latest"
+        cd /backups
+        sha256sum -c "$$(basename "$$latest").sha256"
+        MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=restore-drill-db --user=root \
+          --execute='CREATE DATABASE restore_drill CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+        MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=restore-drill-db --user=root restore_drill < "$$latest"
+        for table in AccountingOffice User ClientCompany Document JournalEntry SupportingDocument AuditLog _prisma_migrations; do
+          count=$$(MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+            --host=restore-drill-db --user=root --batch --skip-column-names \
+            --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='restore_drill' AND table_name='$$table'")
+          test "$$count" -eq 1
+        done
+        check_failures=$$(MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=restore-drill-db --user=root --batch --skip-column-names restore_drill \
+          --execute='CHECK TABLE `AccountingOffice`, `User`, `ClientCompany`, `Document`, `JournalEntry`, `SupportingDocument`, `AuditLog`, `_prisma_migrations`' \
+          | awk '$$4 != "OK" { count++ } END { print count + 0 }')
+        test "$$check_failures" -eq 0
+        migration_count=$$(MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=restore-drill-db --user=root --batch --skip-column-names restore_drill \
+          --execute='SELECT COUNT(*) FROM _prisma_migrations')
+        test "$$migration_count" -gt 0
+        timestamp=$$(date -u +%Y%m%d-%H%M%S)
+        {
+          echo "status=PASSED"
+          echo "completed_at_utc=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "source_backup=$$(basename "$$latest")"
+          echo "applied_migrations=$$migration_count"
+        } > "/reports/restore-drill-$${timestamp}.txt"
+        echo "Isolated database restore drill passed for $$(basename "$$latest")"
+
+  files-restore-drill:
+    profiles: ['restore-drill']
+    image: alpine:3.20
+    volumes:
+      - backup-data:/backups:ro
+      - ./restore-drills:/reports
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        latest=$$(find /backups -maxdepth 1 -type f \
+          -name 'open-logistirio-files-*.tar.gz' | sort | tail -n 1)
+        test -n "$$latest"
+        test -s "$$latest"
+        cd /backups
+        sha256sum -c "$$(basename "$$latest").sha256"
+        tar -tzf "$$latest" >/dev/null
+        timestamp=$$(date -u +%Y%m%d-%H%M%S)
+        {
+          echo "status=PASSED"
+          echo "completed_at_utc=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "source_archive=$$(basename "$$latest")"
+        } > "/reports/files-restore-drill-$${timestamp}.txt"
+        echo "Supporting-documents archive drill passed for $$(basename "$$latest")"
 
   web:
     build:

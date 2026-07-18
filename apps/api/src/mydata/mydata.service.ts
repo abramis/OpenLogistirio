@@ -6,9 +6,14 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
+  AuditAction,
   ClientCompany,
+  CounterpartyType,
   DocumentType,
+  ExpenseClassificationApprovalStatus,
+  MyDataSnapshot,
   MyDataReconciliationStatus,
+  MyDataSnapshotReviewStatus,
   MyDataSyncRunStatus,
   MyDataSyncSource,
   MyDataStatus,
@@ -21,9 +26,21 @@ import { TenantContext } from '../common/tenant/tenant-context';
 import { AadeMyDataTestProvider } from './aade-mydata-test.provider';
 import {
   FindMyDataReconciliationQueryDto,
+  OfficeMyDataDashboardQueryDto,
   SyncMyDataDocsDto,
   SyncMyDataDocsSourceDto,
+  SyncOfficeMyDataDto,
 } from './dto/sync-mydata-docs.dto';
+import {
+  MatchMyDataSnapshotDto,
+  ReviewMyDataSnapshotActionDto,
+  ReviewMyDataSnapshotDto,
+} from './dto/resolve-mydata-snapshot.dto';
+import {
+  ApproveExpenseClassificationDto,
+  BatchApproveExpenseClassificationDto,
+  ExpenseClassificationApprovalActionDto,
+} from './dto/approve-expense-classification.dto';
 import { MockMyDataProvider } from './mydata-mock.service';
 import { MyDataMappingService } from './mydata-mapping.service';
 import { MyDataProvider, MyDataTransmissionResponse } from './mydata-provider.interface';
@@ -110,6 +127,10 @@ export class MyDataService {
         myDataStatus: MyDataStatus.READY_TO_SEND,
         myDataXmlPreview: xml,
         classificationStatus: 'EXPENSE_PREPARED',
+        expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.PENDING,
+        expenseClassificationApprovedById: null,
+        expenseClassificationApprovedAt: null,
+        expenseClassificationApprovalNotes: null,
       },
     });
 
@@ -129,8 +150,113 @@ export class MyDataService {
       documentId: document.id,
       status: MyDataStatus.READY_TO_SEND,
       xml,
+      preview: this.expenseClassificationPreview(document),
       attempt,
     };
+  }
+
+  approveExpenseClassification(
+    tenant: TenantContext,
+    documentId: string,
+    dto: ApproveExpenseClassificationDto,
+  ) {
+    return this.approveExpenseClassificationBatch(tenant, {
+      ...dto,
+      documentIds: [documentId],
+    }).then((result) => result.documents[0]);
+  }
+
+  async approveExpenseClassificationBatch(
+    tenant: TenantContext,
+    dto: BatchApproveExpenseClassificationDto,
+  ) {
+    const documentIds = [...new Set(dto.documentIds)];
+    const documents = await this.prisma.document.findMany({
+      where: {
+        id: { in: documentIds },
+        accountingOfficeId: tenant.accountingOfficeId,
+        deletedAt: null,
+      },
+    });
+    if (documents.length !== documentIds.length) {
+      throw new NotFoundException('One or more expense documents were not found.');
+    }
+    if (
+      dto.action === ExpenseClassificationApprovalActionDto.REJECT &&
+      !dto.notes?.trim()
+    ) {
+      throw new BadRequestException('Rejection notes are required.');
+    }
+    for (const document of documents) {
+      this.ensurePurchaseInvoice(document.documentType);
+      if (!document.myDataMark) {
+        throw new BadRequestException(
+          'Document ' + document.documentNumber + ' has no incoming AADE MARK.',
+        );
+      }
+      if (document.classificationStatus !== 'EXPENSE_PREPARED') {
+        throw new BadRequestException(
+          'Document ' +
+            document.documentNumber +
+            ' must have a fresh expense preview before approval.',
+        );
+      }
+      if (
+        document.expenseClassificationApprovalStatus ===
+        ExpenseClassificationApprovalStatus.CONSUMED
+      ) {
+        throw new BadRequestException(
+          'Document ' +
+            document.documentNumber +
+            ' classification approval is already consumed.',
+        );
+      }
+    }
+
+    const approvalStatus =
+      dto.action === ExpenseClassificationApprovalActionDto.APPROVE
+        ? ExpenseClassificationApprovalStatus.APPROVED
+        : ExpenseClassificationApprovalStatus.REJECTED;
+    const approvedAt =
+      approvalStatus === ExpenseClassificationApprovalStatus.APPROVED ? new Date() : null;
+    const approvedById =
+      approvalStatus === ExpenseClassificationApprovalStatus.APPROVED ? tenant.userId : null;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const document of documents) {
+        results.push(
+          await tx.document.update({
+            where: { id: document.id },
+            data: {
+              expenseClassificationApprovalStatus: approvalStatus,
+              expenseClassificationApprovedById: approvedById,
+              expenseClassificationApprovedAt: approvedAt,
+              expenseClassificationApprovalNotes: dto.notes?.trim() || null,
+            },
+          }),
+        );
+        await tx.auditLog.create({
+          data: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            userId: tenant.userId,
+            action: AuditAction.UPDATE,
+            entityType: 'ExpenseClassificationApproval',
+            entityId: document.id,
+            oldValue: {
+              status: document.expenseClassificationApprovalStatus,
+            },
+            newValue: {
+              status: approvalStatus,
+              notes: dto.notes?.trim() || null,
+            },
+          },
+        });
+      }
+      return results;
+    });
+
+    return { count: updated.length, status: approvalStatus, documents: updated };
   }
 
   async sendExpenseMock(tenant: TenantContext, documentId: string) {
@@ -184,6 +310,16 @@ export class MyDataService {
     const document = await this.getTenantDocument(tenant, documentId);
     this.ensurePurchaseInvoice(document.documentType);
     this.ensureSendAllowed(document, options.force);
+    const configuredEnvironment = this.aadeTestProvider.configuredEnvironment();
+    if (
+      configuredEnvironment === 'production' &&
+      document.expenseClassificationApprovalStatus !==
+        ExpenseClassificationApprovalStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        'Production expense classification requires explicit approval after the latest preview.',
+      );
+    }
 
     if (!this.aadeTestProvider.transmitExpenseClassification) {
       throw new BadRequestException(
@@ -233,6 +369,10 @@ export class MyDataService {
           myDataClassificationMark: response.classificationMark,
           myDataXmlPreview: xml,
           classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+          expenseClassificationApprovalStatus:
+            configuredEnvironment === 'production'
+              ? ExpenseClassificationApprovalStatus.CONSUMED
+              : document.expenseClassificationApprovalStatus,
         },
       });
 
@@ -508,6 +648,8 @@ export class MyDataService {
       dateTo: dto.dateTo ? formatAadeDate(dto.dateTo) : undefined,
       invType: dto.invType,
       maxMark: dto.maxMark,
+      nextPartitionKey: dto.nextPartitionKey,
+      nextRowKey: dto.nextRowKey,
       credentialEnvPrefix,
     };
 
@@ -601,6 +743,12 @@ export class MyDataService {
           source: source as MyDataSyncSource,
           reconciliationStatus: reconciliation.status,
           reconciliationIssues: reconciliation.issues,
+          reviewStatus:
+            reconciliation.status === MyDataReconciliationStatus.MATCHED
+              ? MyDataSnapshotReviewStatus.RESOLVED
+              : MyDataSnapshotReviewStatus.PENDING,
+          reviewedAt:
+            reconciliation.status === MyDataReconciliationStatus.MATCHED ? new Date() : undefined,
           mark: normalizedDocument.mark,
           uid: normalizedDocument.uid,
           qrUrl: normalizedDocument.qrUrl,
@@ -620,6 +768,12 @@ export class MyDataService {
           matchedDocumentId: reconciliation.documentId,
           reconciliationStatus: reconciliation.status,
           reconciliationIssues: reconciliation.issues,
+          reviewStatus:
+            reconciliation.status === MyDataReconciliationStatus.MATCHED
+              ? MyDataSnapshotReviewStatus.RESOLVED
+              : undefined,
+          reviewedAt:
+            reconciliation.status === MyDataReconciliationStatus.MATCHED ? new Date() : undefined,
           uid: normalizedDocument.uid,
           qrUrl: normalizedDocument.qrUrl,
           issuerVatNumber: normalizedDocument.issuerVatNumber,
@@ -671,6 +825,8 @@ export class MyDataService {
         data: {
           myDataClassificationMark: classification.classificationMark,
           classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+          expenseClassificationApprovalStatus:
+            ExpenseClassificationApprovalStatus.CONSUMED,
         },
       });
       classificationsApplied += result.count;
@@ -697,6 +853,622 @@ export class MyDataService {
       nextPartitionKey: findFirstValue(response.rawResponse, ['nextPartitionKey']),
       nextRowKey: findFirstValue(response.rawResponse, ['nextRowKey']),
     };
+  }
+
+  async syncOffice(tenant: TenantContext, dto: SyncOfficeMyDataDto) {
+    const sources = dto.sources?.length
+      ? dto.sources
+      : [
+          SyncMyDataDocsSourceDto.REQUEST_DOCS,
+          SyncMyDataDocsSourceDto.REQUEST_TRANSMITTED_DOCS,
+        ];
+    const companies = await this.prisma.clientCompany.findMany({
+      where: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        deletedAt: null,
+        OR: [
+          {
+            myDataMode: MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED,
+            myDataAuthorized: true,
+          },
+          { myDataMode: MyDataTransmissionMode.OWN_API_CREDENTIALS_ENV_REF },
+        ],
+        id: dto.clientCompanyIds?.length ? { in: dto.clientCompanyIds } : undefined,
+      },
+      select: { id: true, legalName: true },
+      orderBy: { legalName: 'asc' },
+    });
+    const results: Array<Record<string, unknown>> = [];
+
+    for (const company of companies) {
+      for (const source of sources) {
+        let nextPartitionKey: string | undefined;
+        let nextRowKey: string | undefined;
+        let pages = 0;
+        let fetchedCount = 0;
+        let matchedCount = 0;
+        let mismatchCount = 0;
+        let cancellationCount = 0;
+        let expenseClassificationCount = 0;
+        const seenCursors = new Set<string>();
+        const initialMark = dto.incremental
+          ? await this.latestSnapshotMark(
+              tenant.accountingOfficeId,
+              company.id,
+              source as MyDataSyncSource,
+            )
+          : '0';
+
+        try {
+          do {
+            const page = await this.syncRequestDocs(tenant, {
+              clientCompanyId: company.id,
+              source,
+              mark: initialMark,
+              dateFrom: dto.dateFrom,
+              dateTo: dto.dateTo,
+              nextPartitionKey,
+              nextRowKey,
+            });
+            pages += 1;
+            fetchedCount += page.fetchedCount;
+            matchedCount += page.matchedCount;
+            mismatchCount += page.mismatchCount;
+            cancellationCount += page.cancellationCount;
+            expenseClassificationCount += page.expenseClassificationCount;
+            nextPartitionKey = page.nextPartitionKey;
+            nextRowKey = page.nextRowKey;
+            const cursor = `${nextPartitionKey ?? ''}:${nextRowKey ?? ''}`;
+            if ((!nextPartitionKey && !nextRowKey) || seenCursors.has(cursor)) break;
+            seenCursors.add(cursor);
+          } while (pages < (dto.maxPages ?? 10));
+
+          results.push({
+            clientCompanyId: company.id,
+            legalName: company.legalName,
+            source,
+            status: 'COMPLETED',
+            pages,
+            fetchedCount,
+            matchedCount,
+            mismatchCount,
+            cancellationCount,
+            expenseClassificationCount,
+            hasMore: Boolean(nextPartitionKey || nextRowKey),
+          });
+        } catch (error) {
+          results.push({
+            clientCompanyId: company.id,
+            legalName: company.legalName,
+            source,
+            status: 'FAILED',
+            pages,
+            fetchedCount,
+            matchedCount,
+            mismatchCount,
+            error: error instanceof Error ? error.message : 'Unknown myDATA synchronization error.',
+          });
+        }
+      }
+    }
+
+    return {
+      companyCount: companies.length,
+      flowCount: results.length,
+      completedCount: results.filter((result) => result.status === 'COMPLETED').length,
+      failedCount: results.filter((result) => result.status === 'FAILED').length,
+      fetchedCount: results.reduce((sum, result) => sum + Number(result.fetchedCount ?? 0), 0),
+      matchedCount: results.reduce((sum, result) => sum + Number(result.matchedCount ?? 0), 0),
+      mismatchCount: results.reduce((sum, result) => sum + Number(result.mismatchCount ?? 0), 0),
+      results,
+    };
+  }
+
+  async syncScheduledOffices(maxPages = 10) {
+    const offices = await this.prisma.accountingOffice.findMany({
+      where: {
+        clientCompanies: {
+          some: {
+            deletedAt: null,
+            OR: [
+              {
+                myDataMode: MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED,
+                myDataAuthorized: true,
+              },
+              { myDataMode: MyDataTransmissionMode.OWN_API_CREDENTIALS_ENV_REF },
+            ],
+          },
+        },
+      },
+      select: { id: true },
+    });
+    const results = [];
+    for (const office of offices) {
+      results.push(
+        await this.syncOffice(
+          { accountingOfficeId: office.id },
+          {
+            incremental: true,
+            maxPages,
+            sources: [
+              SyncMyDataDocsSourceDto.REQUEST_DOCS,
+              SyncMyDataDocsSourceDto.REQUEST_TRANSMITTED_DOCS,
+            ],
+          },
+        ),
+      );
+    }
+    const failedCount = results.reduce((sum, result) => sum + result.failedCount, 0);
+    if (failedCount > 0) {
+      throw new BadGatewayException(
+        'Scheduled myDATA sync completed with ' + failedCount + ' failed flow(s).',
+      );
+    }
+    return {
+      officeCount: offices.length,
+      flowCount: results.reduce((sum, result) => sum + result.flowCount, 0),
+      fetchedCount: results.reduce((sum, result) => sum + result.fetchedCount, 0),
+      mismatchCount: results.reduce((sum, result) => sum + result.mismatchCount, 0),
+    };
+  }
+
+  async officeDashboard(tenant: TenantContext, query: OfficeMyDataDashboardQueryDto) {
+    const issueDate =
+      query.dateFrom || query.dateTo
+        ? {
+            gte: query.dateFrom ? new Date(query.dateFrom) : undefined,
+            lte: query.dateTo ? endOfDay(new Date(query.dateTo)) : undefined,
+          }
+        : undefined;
+    const snapshotWhere: Prisma.MyDataSnapshotWhereInput = {
+      accountingOfficeId: tenant.accountingOfficeId,
+      source: query.source as MyDataSyncSource | undefined,
+      issueDate,
+    };
+    const exceptionWhere: Prisma.MyDataSnapshotWhereInput = {
+      ...snapshotWhere,
+      reviewStatus: MyDataSnapshotReviewStatus.PENDING,
+      reconciliationStatus:
+        query.status ?? { not: MyDataReconciliationStatus.MATCHED },
+    };
+
+    const [companies, groups, lastRuns, exceptions] = await Promise.all([
+      this.prisma.clientCompany.findMany({
+        where: { accountingOfficeId: tenant.accountingOfficeId, deletedAt: null },
+        select: {
+          id: true,
+          legalName: true,
+          vatNumber: true,
+          myDataAuthorized: true,
+          myDataMode: true,
+        },
+        orderBy: { legalName: 'asc' },
+      }),
+      this.prisma.myDataSnapshot.groupBy({
+        by: ['clientCompanyId', 'source', 'reconciliationStatus', 'reviewStatus'],
+        where: snapshotWhere,
+        _count: { _all: true },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.myDataSyncRun.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          source: query.source as MyDataSyncSource | undefined,
+        },
+        select: {
+          clientCompanyId: true,
+          source: true,
+          status: true,
+          environment: true,
+          fetchedCount: true,
+          matchedCount: true,
+          mismatchCount: true,
+          errorMessage: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.myDataSnapshot.findMany({
+        where: exceptionWhere,
+        include: {
+          clientCompany: { select: { id: true, legalName: true, vatNumber: true } },
+          matchedDocument: {
+            select: { id: true, series: true, documentNumber: true, documentType: true },
+          },
+        },
+        orderBy: [{ issueDate: 'desc' }, { fetchedAt: 'desc' }],
+        take: query.take ?? 100,
+      }),
+    ]);
+
+    const lastRunByCompanyAndSource = new Map<string, (typeof lastRuns)[number]>();
+    for (const run of lastRuns) {
+      const key = `${run.clientCompanyId}:${run.source}`;
+      if (!lastRunByCompanyAndSource.has(key)) lastRunByCompanyAndSource.set(key, run);
+    }
+    const summaries = companies.map((company) => {
+      const companyGroups = groups.filter((group) => group.clientCompanyId === company.id);
+      const count = (status: MyDataReconciliationStatus) =>
+        companyGroups
+          .filter((group) => group.reconciliationStatus === status)
+          .reduce((sum, group) => sum + group._count._all, 0);
+      const totalCount = companyGroups.reduce((sum, group) => sum + group._count._all, 0);
+      const matchedCount = count(MyDataReconciliationStatus.MATCHED);
+      const pendingGroups = companyGroups.filter(
+        (group) => group.reviewStatus === MyDataSnapshotReviewStatus.PENDING,
+      );
+      const pendingCount = (status: MyDataReconciliationStatus) =>
+        pendingGroups
+          .filter((group) => group.reconciliationStatus === status)
+          .reduce((sum, group) => sum + group._count._all, 0);
+      const pendingMissingInternalCount = pendingCount(
+        MyDataReconciliationStatus.MISSING_INTERNAL,
+      );
+      const pendingMismatchCount =
+        pendingGroups.reduce((sum, group) => sum + group._count._all, 0) -
+        pendingMissingInternalCount;
+      return {
+        ...company,
+        apiReady:
+          (company.myDataMode === MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED &&
+            company.myDataAuthorized) ||
+          company.myDataMode === MyDataTransmissionMode.OWN_API_CREDENTIALS_ENV_REF,
+        totalCount,
+        matchedCount,
+        missingInternalCount: pendingMissingInternalCount,
+        mismatchCount: pendingMismatchCount,
+        totalAmount: companyGroups.reduce(
+          (sum, group) => sum + Number(group._sum.totalAmount ?? 0),
+          0,
+        ),
+        lastReceivedSync: lastRunByCompanyAndSource.get(
+          `${company.id}:${MyDataSyncSource.REQUEST_DOCS}`,
+        ),
+        lastTransmittedSync: lastRunByCompanyAndSource.get(
+          `${company.id}:${MyDataSyncSource.REQUEST_TRANSMITTED_DOCS}`,
+        ),
+      };
+    });
+
+    return {
+      overview: {
+        companyCount: companies.length,
+        authorizedCompanyCount: companies.filter(
+          (company) =>
+            (company.myDataMode === MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED &&
+              company.myDataAuthorized) ||
+            company.myDataMode === MyDataTransmissionMode.OWN_API_CREDENTIALS_ENV_REF,
+        ).length,
+        totalCount: summaries.reduce((sum, company) => sum + company.totalCount, 0),
+        matchedCount: summaries.reduce((sum, company) => sum + company.matchedCount, 0),
+        missingInternalCount: summaries.reduce(
+          (sum, company) => sum + company.missingInternalCount,
+          0,
+        ),
+        mismatchCount: summaries.reduce((sum, company) => sum + company.mismatchCount, 0),
+        companiesNeedingReviewCount: summaries.filter(
+          (company) => company.missingInternalCount + company.mismatchCount > 0,
+        ).length,
+        failedSyncCountLast24Hours: lastRuns.filter(
+          (run) =>
+            run.status === MyDataSyncRunStatus.FAILED &&
+            run.createdAt.getTime() >= Date.now() - 24 * 60 * 60 * 1000,
+        ).length,
+      },
+      companies: summaries,
+      exceptions,
+    };
+  }
+
+  async createPurchaseFromSnapshot(tenant: TenantContext, snapshotId: string) {
+    const snapshot = await this.getTenantSnapshot(tenant, snapshotId);
+    const draft = await this.buildSnapshotPurchaseDraft(tenant, snapshot);
+    if (draft.possibleDuplicate) {
+      throw new BadRequestException({
+        message: 'A possible duplicate internal document already exists. Use manual match.',
+        documentId: draft.possibleDuplicate.id,
+      });
+    }
+
+    const { lines, totalAmount, payments, supplierName } = draft;
+    const issuer = findObjectValue(snapshot.rawPayload, 'issuer');
+    const now = new Date();
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        let counterparty = await tx.counterparty.findFirst({
+          where: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            clientCompanyId: snapshot.clientCompanyId,
+            vatNumber: snapshot.issuerVatNumber!,
+            deletedAt: null,
+          },
+        });
+        if (!counterparty) {
+          counterparty = await tx.counterparty.create({
+            data: {
+              accountingOfficeId: tenant.accountingOfficeId,
+              clientCompanyId: snapshot.clientCompanyId,
+              type: CounterpartyType.SUPPLIER,
+              name: supplierName,
+              vatNumber: snapshot.issuerVatNumber!,
+              country: findFirstValue(issuer, ['country']) ?? 'GR',
+              notes: `Δημιουργήθηκε από myDATA MARK ${snapshot.mark}`,
+            },
+          });
+        } else if (counterparty.type === CounterpartyType.CUSTOMER) {
+          counterparty = await tx.counterparty.update({
+            where: { id: counterparty.id },
+            data: { type: CounterpartyType.BOTH },
+          });
+        }
+
+        const document = await tx.document.create({
+          data: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            clientCompanyId: snapshot.clientCompanyId,
+            documentType: DocumentType.PURCHASE_INVOICE,
+            series: snapshot.series,
+            documentNumber: snapshot.documentNumber,
+            issueDate: snapshot.issueDate!,
+            counterpartyName: counterparty.name,
+            counterpartyVatNumber: snapshot.issuerVatNumber,
+            movementCode: 'PURCHASE_INVOICE',
+            journalCode: 'PURCHASES',
+            netAmount: snapshot.netAmount ?? 0,
+            vatAmount: snapshot.vatAmount ?? 0,
+            totalAmount,
+            vatCategory:
+              new Set(lines.map((line) => line.vatCategory)).size === 1
+                ? lines[0].vatCategory
+                : 'MULTIPLE',
+            paymentMethodType: payments[0].type,
+            myDataMark: snapshot.mark,
+            myDataUid: snapshot.uid,
+            myDataQrUrl: snapshot.qrUrl,
+            classificationStatus: 'AADE_RECEIVED_PENDING_CLASSIFICATION',
+            lines: { create: lines },
+            payments: { create: payments },
+          },
+          include: {
+            lines: { orderBy: { lineNumber: 'asc' } },
+            payments: { orderBy: { paymentNumber: 'asc' } },
+          },
+        });
+        await tx.myDataSnapshot.update({
+          where: { id: snapshot.id },
+          data: {
+            matchedDocumentId: document.id,
+            reconciliationStatus: MyDataReconciliationStatus.MATCHED,
+            reconciliationIssues: { fields: [] },
+            reviewStatus: MyDataSnapshotReviewStatus.RESOLVED,
+            reviewedById: tenant.userId,
+            reviewedAt: now,
+            reviewNotes: 'Created purchase invoice from AADE snapshot after preview.',
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            accountingOfficeId: tenant.accountingOfficeId,
+            userId: tenant.userId,
+            action: AuditAction.CREATE,
+            entityType: 'DocumentFromMyDataSnapshot',
+            entityId: document.id,
+            oldValue: Prisma.JsonNull,
+            newValue: {
+              snapshotId: snapshot.id,
+              mark: snapshot.mark,
+              documentType: document.documentType,
+              lineCount: lines.length,
+              previewed: true,
+            },
+          },
+        });
+        return { document, counterparty };
+      });
+
+      return result;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException(
+          'The AADE MARK or UID is already linked to another internal document.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  async previewPurchaseFromSnapshot(tenant: TenantContext, snapshotId: string) {
+    const snapshot = await this.getTenantSnapshot(tenant, snapshotId);
+    const draft = await this.buildSnapshotPurchaseDraft(tenant, snapshot);
+
+    return {
+      snapshotId: snapshot.id,
+      clientCompanyId: snapshot.clientCompanyId,
+      mark: snapshot.mark,
+      uid: snapshot.uid,
+      invoiceType: snapshot.invoiceType,
+      series: snapshot.series,
+      documentNumber: snapshot.documentNumber,
+      issueDate: snapshot.issueDate,
+      supplier: {
+        vatNumber: snapshot.issuerVatNumber,
+        name: draft.supplierName,
+      },
+      totals: {
+        netAmount: Number(snapshot.netAmount),
+        vatAmount: Number(snapshot.vatAmount),
+        totalAmount: draft.totalAmount,
+      },
+      vatBreakdown: snapshotVatBreakdown(draft.lines),
+      lines: draft.lines,
+      payments: draft.payments,
+      possibleDuplicate: draft.possibleDuplicate,
+      canCreate: !draft.possibleDuplicate,
+    };
+  }
+
+  private async buildSnapshotPurchaseDraft(tenant: TenantContext, snapshot: MyDataSnapshot) {
+    if (snapshot.source !== MyDataSyncSource.REQUEST_DOCS) {
+      throw new BadRequestException('Only incoming AADE documents can create purchase invoices.');
+    }
+    if (snapshot.matchedDocumentId) {
+      throw new BadRequestException('This AADE snapshot is already linked to an internal document.');
+    }
+    if (snapshot.invoiceType?.startsWith('5.')) {
+      throw new BadRequestException(
+        'Incoming credit notes require manual review until purchase credit notes have a separate internal document type.',
+      );
+    }
+    if (!snapshot.issueDate || !snapshot.issuerVatNumber) {
+      throw new BadRequestException('AADE issue date and supplier VAT number are required.');
+    }
+
+    const possibleDuplicate = await this.prisma.document.findFirst({
+      where: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        clientCompanyId: snapshot.clientCompanyId,
+        deletedAt: null,
+        OR: [
+          { myDataMark: snapshot.mark },
+          ...(snapshot.uid ? [{ myDataUid: snapshot.uid }] : []),
+          {
+            series: snapshot.series,
+            documentNumber: snapshot.documentNumber,
+            issueDate: { gte: startOfDay(snapshot.issueDate), lte: endOfDay(snapshot.issueDate) },
+            counterpartyVatNumber: snapshot.issuerVatNumber,
+          },
+        ],
+      },
+      select: { id: true, series: true, documentNumber: true },
+    });
+    const lines = snapshotDocumentLines(snapshot.rawPayload);
+    this.assertSnapshotTotals(snapshot, lines);
+    const totalAmount = snapshotTotal(lines);
+    const payments = snapshotPayments(snapshot.rawPayload, totalAmount);
+    const issuer = findObjectValue(snapshot.rawPayload, 'issuer');
+    const supplierName =
+      findFirstValue(issuer, ['name', 'legalName', 'branchName']) ??
+      `Προμηθευτής ΑΦΜ ${snapshot.issuerVatNumber}`;
+    return { lines, totalAmount, payments, supplierName, possibleDuplicate };
+  }
+
+  async matchSnapshot(tenant: TenantContext, snapshotId: string, dto: MatchMyDataSnapshotDto) {
+    const snapshot = await this.getTenantSnapshot(tenant, snapshotId);
+    const document = await this.prisma.document.findFirst({
+      where: {
+        id: dto.documentId,
+        accountingOfficeId: tenant.accountingOfficeId,
+        clientCompanyId: snapshot.clientCompanyId,
+        deletedAt: null,
+      },
+    });
+    if (!document) throw new NotFoundException('Internal document was not found for this client.');
+    if (document.myDataMark && document.myDataMark !== snapshot.mark) {
+      throw new BadRequestException('The internal document is linked to a different AADE MARK.');
+    }
+
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.document.update({
+        where: { id: document.id },
+        data: {
+          myDataMark: snapshot.mark,
+          myDataUid: snapshot.uid,
+          myDataQrUrl: snapshot.qrUrl,
+        },
+      });
+      const updated = await tx.myDataSnapshot.update({
+        where: { id: snapshot.id },
+        data: {
+          matchedDocumentId: document.id,
+          reconciliationStatus: MyDataReconciliationStatus.MATCHED,
+          reconciliationIssues: { fields: [] },
+          reviewStatus: MyDataSnapshotReviewStatus.RESOLVED,
+          reviewedById: tenant.userId,
+          reviewedAt: now,
+          reviewNotes: dto.notes ?? 'Manual match accepted by user.',
+        },
+        include: { matchedDocument: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          userId: tenant.userId,
+          action: AuditAction.UPDATE,
+          entityType: 'MyDataSnapshot',
+          entityId: snapshot.id,
+          oldValue: { matchedDocumentId: snapshot.matchedDocumentId },
+          newValue: { matchedDocumentId: document.id, reviewStatus: 'RESOLVED' },
+        },
+      });
+      return updated;
+    });
+  }
+
+  async reviewSnapshot(tenant: TenantContext, snapshotId: string, dto: ReviewMyDataSnapshotDto) {
+    const snapshot = await this.getTenantSnapshot(tenant, snapshotId);
+    const reviewStatus =
+      dto.action === ReviewMyDataSnapshotActionDto.IGNORE
+        ? MyDataSnapshotReviewStatus.IGNORED
+        : MyDataSnapshotReviewStatus.PENDING;
+    const now = new Date();
+    const updated = await this.prisma.myDataSnapshot.update({
+      where: { id: snapshot.id },
+      data: {
+        reviewStatus,
+        reviewedById: dto.action === ReviewMyDataSnapshotActionDto.IGNORE ? tenant.userId : null,
+        reviewedAt: dto.action === ReviewMyDataSnapshotActionDto.IGNORE ? now : null,
+        reviewNotes: dto.notes ?? null,
+      },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        userId: tenant.userId,
+        action: AuditAction.UPDATE,
+        entityType: 'MyDataSnapshot',
+        entityId: snapshot.id,
+        oldValue: { reviewStatus: snapshot.reviewStatus },
+        newValue: { reviewStatus, notes: dto.notes ?? null },
+      },
+    });
+    return updated;
+  }
+
+  async snapshotCandidates(tenant: TenantContext, snapshotId: string) {
+    const snapshot = await this.getTenantSnapshot(tenant, snapshotId);
+    const issueDate = snapshot.issueDate ?? new Date();
+    const dateFrom = new Date(issueDate);
+    const dateTo = new Date(issueDate);
+    dateFrom.setUTCDate(dateFrom.getUTCDate() - 7);
+    dateTo.setUTCDate(dateTo.getUTCDate() + 7);
+    return this.prisma.document.findMany({
+      where: {
+        accountingOfficeId: tenant.accountingOfficeId,
+        clientCompanyId: snapshot.clientCompanyId,
+        deletedAt: null,
+        issueDate: { gte: startOfDay(dateFrom), lte: endOfDay(dateTo) },
+        OR: [
+          { documentNumber: snapshot.documentNumber },
+          { counterpartyVatNumber: snapshot.issuerVatNumber ?? undefined },
+          { totalAmount: snapshot.totalAmount ?? undefined },
+        ],
+      },
+      select: {
+        id: true,
+        documentType: true,
+        series: true,
+        documentNumber: true,
+        issueDate: true,
+        counterpartyName: true,
+        counterpartyVatNumber: true,
+        totalAmount: true,
+        myDataMark: true,
+      },
+      orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+      take: 20,
+    });
   }
 
   async findReconciliation(tenant: TenantContext, query: FindMyDataReconciliationQueryDto) {
@@ -915,6 +1687,22 @@ export class MyDataService {
     throw new BadGatewayException(metadata.message);
   }
 
+  private async latestSnapshotMark(
+    accountingOfficeId: string,
+    clientCompanyId: string,
+    source: MyDataSyncSource,
+  ): Promise<string> {
+    const snapshots = await this.prisma.myDataSnapshot.findMany({
+      where: { accountingOfficeId, clientCompanyId, source },
+      select: { mark: true },
+    });
+    return snapshots.reduce(
+      (highest, snapshot) =>
+        compareNumericStrings(snapshot.mark, highest) > 0 ? snapshot.mark : highest,
+      '0',
+    );
+  }
+
   private async getTenantDocument(tenant: TenantContext, documentId: string) {
     const document = await this.prisma.document.findFirst({
       where: {
@@ -938,6 +1726,78 @@ export class MyDataService {
     }
 
     return document;
+  }
+
+  private expenseClassificationPreview(document: {
+    id: string;
+    myDataMark: string | null;
+    netAmount: Prisma.Decimal;
+    vatAmount: Prisma.Decimal;
+    totalAmount: Prisma.Decimal;
+    lines: Array<{
+      lineNumber: number;
+      description: string | null;
+      netAmount: Prisma.Decimal;
+      vatAmount: Prisma.Decimal;
+      vatCategory: string;
+      expenseClassificationType: string | null;
+      expenseClassificationCategory: string | null;
+      vatClassificationType: string | null;
+    }>;
+  }) {
+    return {
+      documentId: document.id,
+      invoiceMark: document.myDataMark,
+      totals: {
+        netAmount: Number(document.netAmount),
+        vatAmount: Number(document.vatAmount),
+        totalAmount: Number(document.totalAmount),
+      },
+      lines: document.lines.map((line) => ({
+        lineNumber: line.lineNumber,
+        description: line.description,
+        netAmount: Number(line.netAmount),
+        vatAmount: Number(line.vatAmount),
+        vatCategory: line.vatCategory,
+        expenseClassificationType: line.expenseClassificationType ?? 'E3_102_001',
+        expenseClassificationCategory: line.expenseClassificationCategory ?? 'category2_4',
+        vatClassificationType: line.vatClassificationType,
+      })),
+    };
+  }
+
+  private async getTenantSnapshot(tenant: TenantContext, id: string) {
+    const snapshot = await this.prisma.myDataSnapshot.findFirst({
+      where: { id, accountingOfficeId: tenant.accountingOfficeId },
+    });
+    if (!snapshot) throw new NotFoundException('myDATA snapshot was not found.');
+    return snapshot;
+  }
+
+  private assertSnapshotTotals(
+    snapshot: {
+      netAmount: Prisma.Decimal | null;
+      vatAmount: Prisma.Decimal | null;
+      totalAmount: Prisma.Decimal | null;
+    },
+    lines: SnapshotDocumentLine[],
+  ) {
+    if (!snapshot.netAmount || !snapshot.vatAmount || !snapshot.totalAmount) {
+      throw new BadRequestException('AADE summary totals are required before creating a document.');
+    }
+    const comparisons = [
+      ['net', Number(snapshot.netAmount), sumSnapshotLines(lines, 'netAmount')],
+      ['VAT', Number(snapshot.vatAmount), sumSnapshotLines(lines, 'vatAmount')],
+      ['gross', Number(snapshot.totalAmount), snapshotTotal(lines)],
+    ] as const;
+    const mismatch = comparisons.find(([, expected, calculated]) =>
+      moneyDiffers(expected, calculated),
+    );
+    if (mismatch) {
+      throw new BadRequestException(
+        `AADE ${mismatch[0]} total does not equal the imported line aggregation. Manual review is required.`,
+      );
+    }
   }
 
   private async getTenantClientCompany(tenant: TenantContext, clientCompanyId: string) {
@@ -1236,7 +2096,7 @@ export class MyDataService {
     }
 
     if (provider.providerName === this.aadeTestProvider.providerName) {
-      return 'aade-configured';
+      return this.aadeTestProvider.configuredEnvironment();
     }
 
     return 'unknown';
@@ -1294,6 +2154,195 @@ export class MyDataService {
         };
     }
   }
+}
+
+interface SnapshotDocumentLine {
+  lineNumber: number;
+  itemCode?: string;
+  description?: string;
+  quantity?: number;
+  measurementUnit?: number;
+  unitPrice?: number;
+  discountAmount: number;
+  netAmount: number;
+  vatAmount: number;
+  vatCategory: string;
+  vatExemptionCategory?: number;
+  withheldAmount: number;
+  withheldCategory?: number;
+  feesAmount: number;
+  feesCategory?: number;
+  stampDutyAmount: number;
+  stampDutyCategory?: number;
+  otherTaxesAmount: number;
+  otherTaxesCategory?: number;
+  deductionsAmount: number;
+  expenseClassificationType?: string;
+  expenseClassificationCategory?: string;
+  vatClassificationType?: string;
+}
+
+function snapshotDocumentLines(rawPayload: unknown): SnapshotDocumentLine[] {
+  const details = collectNamedPayloads(rawPayload, 'invoiceDetails');
+  if (details.length === 0) {
+    throw new BadRequestException('AADE invoice details are missing; automatic creation is unsafe.');
+  }
+  return details.map((detail, index) => {
+    const quantity = optionalNumber(detail, ['quantity']);
+    const measurementUnit = optionalNumber(detail, ['measurementUnit']);
+    const netAmount = requiredNumber(detail, ['netValue'], `line ${index + 1} net value`);
+    const vatCategoryCode = requiredNumber(
+      detail,
+      ['vatCategory'],
+      `line ${index + 1} VAT category`,
+    );
+    const vatCategory = snapshotVatCategory(vatCategoryCode);
+    const expenseClassification = findObjectValue(detail, 'expensesClassification');
+    const vatClassification = findObjectValue(detail, 'vatClassification');
+    return {
+      lineNumber: optionalNumber(detail, ['lineNumber']) ?? index + 1,
+      itemCode: emptyStringToUndefined(findFirstValue(detail, ['itemCode'])),
+      description: emptyStringToUndefined(
+        findFirstValue(detail, ['itemDescr', 'description']),
+      ),
+      quantity: quantity !== undefined && measurementUnit !== undefined ? quantity : undefined,
+      measurementUnit:
+        quantity !== undefined && measurementUnit !== undefined ? measurementUnit : undefined,
+      unitPrice: quantity && quantity > 0 ? roundSnapshot(netAmount / quantity, 4) : undefined,
+      discountAmount: optionalNumber(detail, ['discountAmount']) ?? 0,
+      netAmount,
+      vatAmount: optionalNumber(detail, ['vatAmount']) ?? 0,
+      vatCategory,
+      vatExemptionCategory:
+        vatCategory === 'VAT_0'
+          ? optionalNumber(detail, ['vatExemptionCategory'])
+          : undefined,
+      withheldAmount: optionalNumber(detail, ['withheldAmount']) ?? 0,
+      withheldCategory: positiveCategory(
+        detail,
+        ['withheldAmount'],
+        ['withheldPercentCategory'],
+      ),
+      feesAmount: optionalNumber(detail, ['feesAmount']) ?? 0,
+      feesCategory: positiveCategory(detail, ['feesAmount'], ['feesPercentCategory']),
+      stampDutyAmount: optionalNumber(detail, ['stampDutyAmount']) ?? 0,
+      stampDutyCategory: positiveCategory(
+        detail,
+        ['stampDutyAmount'],
+        ['stampDutyPercentCategory'],
+      ),
+      otherTaxesAmount: optionalNumber(detail, ['otherTaxesAmount']) ?? 0,
+      otherTaxesCategory: positiveCategory(
+        detail,
+        ['otherTaxesAmount'],
+        ['otherTaxesPercentCategory'],
+      ),
+      deductionsAmount: optionalNumber(detail, ['deductionsAmount']) ?? 0,
+      expenseClassificationType: findFirstValue(expenseClassification, ['classificationType']),
+      expenseClassificationCategory: findFirstValue(expenseClassification, [
+        'classificationCategory',
+      ]),
+      vatClassificationType: findFirstValue(vatClassification, ['classificationType']),
+    };
+  });
+}
+
+function snapshotPayments(rawPayload: unknown, totalAmount: number) {
+  const details = collectNamedPayloads(rawPayload, 'paymentMethodDetails');
+  const payments = details.flatMap((detail, index) => {
+    const type = optionalNumber(detail, ['type']);
+    const amount = optionalNumber(detail, ['amount']);
+    if (!type || amount === undefined) return [];
+    return [
+      {
+        paymentNumber: index + 1,
+        type,
+        amount,
+        paymentMethodInfo: emptyStringToUndefined(findFirstValue(detail, ['paymentMethodInfo'])),
+        transactionId: emptyStringToUndefined(findFirstValue(detail, ['transactionId'])),
+      },
+    ];
+  });
+  const paymentTotal = roundSnapshot(payments.reduce((sum, payment) => sum + payment.amount, 0));
+  return payments.length > 0 && !moneyDiffers(paymentTotal, totalAmount)
+    ? payments
+    : [{ paymentNumber: 1, type: 3, amount: totalAmount }];
+}
+
+function snapshotTotal(lines: SnapshotDocumentLine[]) {
+  return roundSnapshot(
+    sumSnapshotLines(lines, 'netAmount') +
+      sumSnapshotLines(lines, 'vatAmount') -
+      sumSnapshotLines(lines, 'withheldAmount') +
+      sumSnapshotLines(lines, 'feesAmount') +
+      sumSnapshotLines(lines, 'stampDutyAmount') +
+      sumSnapshotLines(lines, 'otherTaxesAmount') -
+      sumSnapshotLines(lines, 'deductionsAmount'),
+  );
+}
+
+function snapshotVatBreakdown(lines: SnapshotDocumentLine[]) {
+  const breakdown = new Map<string, { vatCategory: string; netAmount: number; vatAmount: number }>();
+  for (const line of lines) {
+    const current = breakdown.get(line.vatCategory) ?? {
+      vatCategory: line.vatCategory,
+      netAmount: 0,
+      vatAmount: 0,
+    };
+    current.netAmount = roundSnapshot(current.netAmount + line.netAmount);
+    current.vatAmount = roundSnapshot(current.vatAmount + line.vatAmount);
+    breakdown.set(line.vatCategory, current);
+  }
+  return [...breakdown.values()];
+}
+
+function sumSnapshotLines(lines: SnapshotDocumentLine[], field: keyof SnapshotDocumentLine) {
+  return roundSnapshot(lines.reduce((sum, line) => sum + Number(line[field] ?? 0), 0));
+}
+
+function snapshotVatCategory(code: number) {
+  const categories: Record<number, string> = {
+    1: 'VAT_24',
+    2: 'VAT_13',
+    3: 'VAT_6',
+    4: 'VAT_17',
+    5: 'VAT_9',
+    6: 'VAT_4',
+    7: 'VAT_0',
+    8: 'NO_VAT',
+    9: 'VAT_3',
+  };
+  const category = categories[code];
+  if (!category) throw new BadRequestException(`Unsupported AADE VAT category ${code}.`);
+  return category;
+}
+
+function positiveCategory(value: unknown, amountKeys: string[], categoryKeys: string[]) {
+  return (optionalNumber(value, amountKeys) ?? 0) > 0
+    ? optionalNumber(value, categoryKeys)
+    : undefined;
+}
+
+function requiredNumber(value: unknown, keys: string[], label: string) {
+  const number = optionalNumber(value, keys);
+  if (number === undefined) throw new BadRequestException(`AADE ${label} is missing or invalid.`);
+  return number;
+}
+
+function optionalNumber(value: unknown, keys: string[]): number | undefined {
+  const raw = findFirstValue(value, keys);
+  if (raw === undefined || raw === '') return undefined;
+  const number = Number(raw);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function roundSnapshot(value: number, decimals = 2) {
+  const factor = 10 ** decimals;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+function moneyDiffers(first: number, second: number) {
+  return Math.abs(roundSnapshot(first) - roundSnapshot(second)) > 0.009;
 }
 
 function collectInvoicePayloads(value: unknown): unknown[] {
@@ -1486,6 +2535,15 @@ function decimalDiffers(left: Prisma.Decimal, right: Prisma.Decimal): boolean {
 
 function normalizeVat(value: string): string {
   return value.replace(/\D/g, '');
+}
+
+function compareNumericStrings(left: string, right: string): number {
+  const normalizedLeft = left.replace(/^0+/, '') || '0';
+  const normalizedRight = right.replace(/^0+/, '') || '0';
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return normalizedLeft.length - normalizedRight.length;
+  }
+  return normalizedLeft.localeCompare(normalizedRight);
 }
 
 function startOfDay(date: Date): Date {

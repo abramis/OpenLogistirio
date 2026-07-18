@@ -40,6 +40,11 @@ describe('AadeMyDataTestProvider', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    configValues.AADE_MYDATA_ENV = 'test';
+    delete configValues.AADE_MYDATA_PRODUCTION_READ_ENABLED;
+    delete configValues.AADE_MYDATA_PRODUCTION_ENABLED;
+    delete configValues.AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL;
+    delete configValues.AADE_MYDATA_PRODUCTION_SEND_EXPENSES_CLASSIFICATION_URL;
   });
 
   it('validates and sends expense classifications in post-per-invoice mode', async () => {
@@ -107,5 +112,52 @@ describe('AadeMyDataTestProvider', () => {
         cancellationMark: '7000012345',
       }),
     );
+  });
+
+  it('allows explicitly enabled production reads while production writes remain disabled', async () => {
+    Object.assign(configValues, {
+      AADE_MYDATA_ENV: 'production',
+      AADE_MYDATA_PRODUCTION_READ_ENABLED: true,
+      AADE_MYDATA_PRODUCTION_ENABLED: false,
+      AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL:
+        'https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs',
+      AADE_MYDATA_PRODUCTION_SEND_EXPENSES_CLASSIFICATION_URL:
+        'https://mydatapi.aade.gr/myDATA/SendExpensesClassification',
+    });
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('<RequestedDoc />', { status: 200 }));
+
+    const readResult = await provider.requestDocs({
+      source: 'REQUEST_TRANSMITTED_DOCS',
+      mark: '0',
+    });
+
+    expect(readResult).toEqual(expect.objectContaining({ status: 'received', environment: 'production' }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL('https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs?mark=0'),
+      expect.objectContaining({ method: 'GET' }),
+    );
+    await expect(
+      provider.transmitExpenseClassification({
+        documentId: 'document-1',
+        payloadXml: '<ExpensesClassificationsDoc />',
+        postPerInvoice: true,
+      }),
+    ).rejects.toThrow('production writes are disabled');
+  });
+
+  it('keeps production reads disabled unless the separate read flag is enabled', async () => {
+    Object.assign(configValues, {
+      AADE_MYDATA_ENV: 'production',
+      AADE_MYDATA_PRODUCTION_READ_ENABLED: false,
+      AADE_MYDATA_PRODUCTION_ENABLED: true,
+      AADE_MYDATA_PRODUCTION_REQUEST_TRANSMITTED_DOCS_URL:
+        'https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs',
+    });
+
+    await expect(
+      provider.requestDocs({ source: 'REQUEST_TRANSMITTED_DOCS', mark: '0' }),
+    ).rejects.toThrow('production reads are disabled');
   });
 });

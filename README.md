@@ -49,6 +49,7 @@ For AADE myDATA test sends, fill only these values:
 
 ```bash
 AADE_MYDATA_ENV=test
+AADE_MYDATA_PRODUCTION_READ_ENABLED=false
 AADE_MYDATA_PRODUCTION_ENABLED=false
 AADE_MYDATA_USER_ID=your-mydata-api-username
 AADE_MYDATA_SUBSCRIPTION_KEY=your-mydata-api-subscription-key
@@ -230,10 +231,18 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 The `migrate` job must complete successfully before the API starts. MySQL and Redis are internal
 services; only the web reverse proxy is published. The API readiness probe checks both dependencies
-at `/api/health/ready`. The `backup` service writes a consistent MySQL dump immediately and then at
-`BACKUP_INTERVAL_SECONDS`, pruning local dumps older than `BACKUP_RETENTION_DAYS`. Backups are kept
-in the named `backup-data` volume; replicate that volume to independent, encrypted storage and perform
-scheduled restore drills. After deployment run `./scripts/production-smoke-check.sh https://your-domain`.
+at `/api/health/ready`. The `backup` and `files-backup` services write atomic, SHA-256-protected
+database and supporting-document backups immediately and then at `BACKUP_INTERVAL_SECONDS`, pruning
+local artifacts older than `BACKUP_RETENTION_DAYS`. Backups are kept in the named `backup-data`
+volume; replicate them to independent, encrypted storage. After deployment run
+`./scripts/production-smoke-check.sh https://your-domain` and follow the full
+[production runbook](docs/production-runbook.md).
+
+Run the isolated database and supporting-document restore drill without touching production data:
+
+```bash
+PRODUCTION_ENV_FILE=.env.production ./scripts/production-restore-drill.sh
+```
 
 Backups created from the app are stored in the local `backups/` directory and are
 also available for download from the web UI.
@@ -285,6 +294,7 @@ For the common accounting-office flow, set these values in `.env`:
 
 ```bash
 AADE_MYDATA_ENV=test
+AADE_MYDATA_PRODUCTION_READ_ENABLED=false
 AADE_MYDATA_PRODUCTION_ENABLED=false
 AADE_MYDATA_USER_ID=your-mydata-api-username
 AADE_MYDATA_SUBSCRIPTION_KEY=your-mydata-api-subscription-key
@@ -332,7 +342,14 @@ with an original invoice MARK are sent as correlated type `5.1`; without a MARK 
 are sent as uncorrelated type `5.2`. The API validates category/amount pairs and the
 payable total before XML preparation.
 
-Production AADE sends are deliberately double-gated:
+Production AADE access is deliberately split by risk:
+
+- `AADE_MYDATA_PRODUCTION_READ_ENABLED=true` enables only the read-only
+  `RequestDocs` and `RequestTransmittedDocs` reconciliation calls
+- Production writes remain disabled when only the read flag is enabled
+- Every production write still requires explicit approval for the specific document or batch
+
+Production AADE writes are deliberately double-gated:
 
 - Set `AADE_MYDATA_ENV=production`
 - Set `AADE_MYDATA_PRODUCTION_ENABLED=true`
@@ -417,6 +434,11 @@ Implemented accounting-office workflows in the MVP:
   Intrastat placeholders
 - Per-document movement codes and journals from client setup, with a client
   movement/book view on the client details page
+- Digital movement workspace with tenant-scoped inventory items, warehouses,
+  vehicles, dispatch-note lines and AADE quantity/movement-purpose codes
+- Draft/issued/received/cancelled dispatch lifecycle with atomic stock deductions,
+  full, partial or rejected delivery receipts per line, manual opening adjustments,
+  cancellation reversals, lifecycle history and a signed warehouse stock ledger
 - Chart of accounts seed, posting rules, accounting periods, manual journal entries,
   document posting, depreciation posting, trial balance, ledger, VAT reconciliation,
   and financial-statement summaries
@@ -429,6 +451,10 @@ Implemented accounting-office workflows in the MVP:
   original/cancellation MARK correlation and cancellation timestamp
 - AADE RequestDocs/RequestTransmittedDocs snapshot sync and reconciliation against
   local ERP documents
+- Office-wide myDATA daily reconciliation workspace with sequential production read-only
+  synchronization, AADE cursor pagination, per-client summaries and a cross-client exception queue
+- Reviewed myDATA inbox workflow with duplicate-safe purchase creation, supplier master creation,
+  manual matching, ignored-item reasons, reviewer timestamps and audit-log entries
 - Expense/receiver myDATA preparation, mock classification, and guarded AADE test
   `SendExpensesClassification?postPerInvoice=true` for purchases with an AADE MARK
 - Official AADE v2.0.1 XSD preflight validation for invoice and expense XML
@@ -476,3 +502,5 @@ Not production-ready yet:
 - Production-grade closing workflows, accountant review controls, and official
   statutory financial statement packages
 - Production AADE send without re-checking the latest official specs and credentials flow
+- AADE transmission and phase-B lifecycle calls for digital dispatch notes; the current
+  digital-movement slice is an internal inventory/dispatch workflow and never sends externally

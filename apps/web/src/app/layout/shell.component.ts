@@ -1,13 +1,14 @@
-import { NgIf } from '@angular/common';
+import { AsyncPipe, NgIf } from '@angular/common';
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
+import { MyDataApiService } from '../core/api/mydata-api.service';
 import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
 
 @Component({
   selector: 'ol-shell',
   standalone: true,
-  imports: [NgIf, RouterLink, RouterLinkActive],
+  imports: [AsyncPipe, NgIf, RouterLink, RouterLinkActive],
   template: `
     <div class="shell">
       <aside class="sidebar">
@@ -22,6 +23,7 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
         </div>
 
         <nav class="sidebar-nav" aria-label="Κύρια πλοήγηση">
+          <div class="nav-label">Καθημερινή εργασία</div>
           <a
             class="nav-item"
             routerLink="/"
@@ -39,10 +41,15 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
             <span class="material-symbols-outlined">receipt_long</span>
             <span>Παραστατικά</span>
           </a>
+          <a class="nav-item" routerLink="/mydata" routerLinkActive="active">
+            <span class="material-symbols-outlined">sync_alt</span>
+            <span>myDATA Συμφωνία</span>
+          </a>
           <a class="nav-item" routerLink="/counterparties" routerLinkActive="active">
             <span class="material-symbols-outlined">contacts</span>
             <span>Αντισυμβαλλόμενοι</span>
           </a>
+          <div class="nav-label">Λογιστική & φορολογία</div>
           <a class="nav-item" routerLink="/vat-book" routerLinkActive="active">
             <span class="material-symbols-outlined">calculate</span>
             <span>Βιβλία</span>
@@ -59,6 +66,11 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
             <span class="material-symbols-outlined">inventory_2</span>
             <span>Πάγια</span>
           </a>
+          <div class="nav-label">Εργαλεία γραφείου</div>
+          <a class="nav-item" routerLink="/digital-movement" routerLinkActive="active">
+            <span class="material-symbols-outlined">local_shipping</span>
+            <span>Διακίνηση</span>
+          </a>
           <a class="nav-item" routerLink="/imports" routerLinkActive="active">
             <span class="material-symbols-outlined">upload_file</span>
             <span>Imports</span>
@@ -71,6 +83,7 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
             <span class="material-symbols-outlined">analytics</span>
             <span>Reports</span>
           </a>
+          <div class="nav-label">Διαχείριση</div>
           <a *ngIf="canViewAudit()" class="nav-item" routerLink="/audit" routerLinkActive="active">
             <span class="material-symbols-outlined">history</span>
             <span>Audit</span>
@@ -106,16 +119,26 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
         <div class="sidebar-footer">
           <div class="ws-label">Ενεργό γραφείο</div>
           <div class="ws-name">Ανοιχτό Λογιστήριο Αθήνας</div>
-          <span class="aade-badge">
+          <span class="aade-badge" *ngIf="myDataEnvironment$ | async as environment">
             <span class="material-symbols-outlined">science</span>
-            AADE test mode
+            {{
+              environment.productionWriteEnabled
+                ? 'AADE production writes'
+                : environment.productionReadEnabled
+                  ? 'AADE production read-only'
+                  : 'AADE test mode'
+            }}
           </span>
         </div>
       </aside>
 
       <main class="content">
         <header class="topbar">
-          <div>
+          <div class="topbar-context">
+            <span class="material-symbols-outlined">domain</span>
+            <span>Χώρος εργασίας λογιστικού γραφείου</span>
+          </div>
+          <div class="user-summary">
             <strong>{{ auth.user()?.fullName || 'Open Logistirio' }}</strong>
             <span>{{ auth.user()?.role || '' }}</span>
           </div>
@@ -124,7 +147,9 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
             Έξοδος
           </button>
         </header>
-        <ng-content />
+        <div class="workspace">
+          <ng-content />
+        </div>
       </main>
     </div>
   `,
@@ -133,7 +158,7 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
       .shell {
         display: grid;
         min-height: 100vh;
-        grid-template-columns: 242px minmax(0, 1fr);
+        grid-template-columns: 256px minmax(0, 1fr);
       }
 
       /* ── Sidebar ─────────────────────────────────────── */
@@ -193,6 +218,20 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
         padding: 10px 8px;
       }
 
+      .nav-label {
+        padding: 13px 10px 5px;
+        color: #70838f;
+        font-size: 0.625rem;
+        font-weight: 800;
+        letter-spacing: 0.11em;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+
+      .nav-label:first-child {
+        padding-top: 5px;
+      }
+
       .nav-item {
         display: flex;
         align-items: center;
@@ -219,6 +258,7 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
         background: var(--sidebar-nav-act-bg);
         color: var(--sidebar-nav-act-t);
         font-weight: 600;
+        box-shadow: inset 3px 0 0 var(--sidebar-nav-act-i);
       }
       .nav-item.active .material-symbols-outlined {
         color: var(--sidebar-nav-act-i);
@@ -236,7 +276,7 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
         font-weight: 700;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #3d5070;
+        color: #6f838f;
         margin-bottom: 4px;
       }
       .ws-name {
@@ -265,32 +305,58 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
       /* Content */
       .content {
         min-width: 0;
-        padding: 28px 32px;
+        background: var(--bg);
       }
 
       .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: space-between;
         gap: 12px;
-        margin: -10px 0 18px;
-        padding-bottom: 12px;
+        min-height: 58px;
+        padding: 10px 32px;
         border-bottom: 1px solid var(--border);
+        background: rgba(251, 252, 253, 0.94);
+        backdrop-filter: blur(10px);
       }
 
-      .topbar div {
+      .user-summary {
         display: grid;
         gap: 2px;
         text-align: right;
+        margin-left: auto;
       }
 
-      .topbar strong {
+      .user-summary strong {
         font-size: 0.85rem;
       }
 
-      .topbar span {
+      .user-summary span {
         color: var(--muted);
         font-size: 0.72rem;
+      }
+
+      .topbar-context {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+
+      .topbar-context .material-symbols-outlined {
+        color: var(--primary);
+        font-size: 17px;
+      }
+
+      .workspace {
+        width: min(100%, var(--workspace-max));
+        margin: 0 auto;
+        padding: 26px 32px 48px;
       }
 
       @media (max-width: 760px) {
@@ -313,16 +379,25 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
           flex-direction: row;
           padding: 0;
           flex: 1;
+          overflow-x: auto;
+        }
+        .nav-label {
+          display: none;
+        }
+        .nav-item {
+          flex: 0 0 auto;
         }
         .sidebar-footer {
           display: none;
         }
-        .content {
-          padding: 16px;
-        }
-
         .topbar {
-          margin-top: 0;
+          padding: 8px 16px;
+        }
+        .topbar-context {
+          display: none;
+        }
+        .workspace {
+          padding: 18px 16px 36px;
         }
       }
     `,
@@ -330,6 +405,8 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
 })
 export class ShellComponent {
   readonly auth = inject(AuthService);
+  private readonly myDataApi = inject(MyDataApiService);
+  readonly myDataEnvironment$ = this.myDataApi.environment();
 
   canViewAudit(): boolean {
     return this.auth.hasAnyRole(ACCOUNTING_CONTROL_ROLES);

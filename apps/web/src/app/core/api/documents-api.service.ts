@@ -41,6 +41,14 @@ export interface DocumentListItem {
   myDataCancellationMark?: string | null;
   myDataCancelledAt?: string | null;
   classificationStatus?: string | null;
+  expenseClassificationApprovalStatus?:
+    | 'NOT_REQUESTED'
+    | 'PENDING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'CONSUMED';
+  expenseClassificationApprovedAt?: string | null;
+  expenseClassificationApprovalNotes?: string | null;
   clientCompany: {
     id: string;
     legalName: string;
@@ -100,6 +108,23 @@ export interface MyDataPrepareResponse {
   documentId: string;
   status: string;
   xml: string;
+  preview?: ExpenseClassificationPreview;
+}
+
+export interface ExpenseClassificationPreview {
+  documentId: string;
+  invoiceMark?: string | null;
+  totals: { netAmount: number; vatAmount: number; totalAmount: number };
+  lines: Array<{
+    lineNumber: number;
+    description?: string | null;
+    netAmount: number;
+    vatAmount: number;
+    vatCategory: string;
+    expenseClassificationType: string;
+    expenseClassificationCategory: string;
+    vatClassificationType?: string | null;
+  }>;
 }
 
 export interface DocumentPayload {
@@ -239,6 +264,28 @@ export class DocumentsApiService {
       `${this.baseUrl}/${documentId}/mydata/prepare-expense`,
       {},
       {},
+    );
+  }
+
+  approveExpenseClassification(
+    documentId: string,
+    action: 'APPROVE' | 'REJECT',
+    notes?: string,
+  ): Observable<DocumentListItem> {
+    return this.http.post<DocumentListItem>(
+      this.baseUrl + '/' + documentId + '/mydata/expense-approval',
+      { action, notes },
+    );
+  }
+
+  approveExpenseClassificationBatch(
+    documentIds: string[],
+    action: 'APPROVE' | 'REJECT',
+    notes?: string,
+  ): Observable<{ count: number; status: string; documents: DocumentListItem[] }> {
+    return this.http.post<{ count: number; status: string; documents: DocumentListItem[] }>(
+      this.baseUrl + '/mydata/expense-approval/batch',
+      { documentIds, action, notes },
     );
   }
 

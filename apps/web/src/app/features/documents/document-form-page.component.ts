@@ -34,137 +34,157 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
 
     <form [formGroup]="form" (ngSubmit)="submit()" class="doc-form card">
       <div class="form-body">
-        <label class="field wide">
-          <span class="field-label">Εταιρεία / πελάτης <span class="req">*</span></span>
-          <select formControlName="clientCompanyId">
-            <option value="">Επιλέξτε εταιρεία…</option>
-            <option *ngFor="let company of companies$ | async" [value]="company.id">
-              {{ company.legalName }} — {{ company.vatNumber }}
-            </option>
-          </select>
-          <span class="field-error" *ngIf="showError('clientCompanyId', 'required')"
-            >Η εταιρεία είναι υποχρεωτική.</span
-          >
-        </label>
+        <section class="form-section document-basics">
+          <div class="section-heading">
+            <div>
+              <h2>1. Στοιχεία παραστατικού</h2>
+              <p>Πελάτης, τύπος, αρίθμηση και φορολογική βάση.</p>
+            </div>
+          </div>
+          <div class="form-section-grid">
+            <label class="field wide">
+              <span class="field-label">Εταιρεία / πελάτης <span class="req">*</span></span>
+              <select formControlName="clientCompanyId">
+                <option value="">Επιλέξτε εταιρεία…</option>
+                <option *ngFor="let company of companies$ | async" [value]="company.id">
+                  {{ company.legalName }} — {{ company.vatNumber }}
+                </option>
+              </select>
+              <span class="field-error" *ngIf="showError('clientCompanyId', 'required')"
+                >Η εταιρεία είναι υποχρεωτική.</span
+              >
+            </label>
 
-        <label class="field">
-          <span class="field-label">Τύπος παραστατικού</span>
-          <select formControlName="documentType">
-            <option value="SALES_INVOICE">Τιμολόγιο πώλησης</option>
-            <option value="PURCHASE_INVOICE">Τιμολόγιο αγοράς / δαπάνη</option>
-            <option value="CREDIT_NOTE">Πιστωτικό</option>
-            <option value="RETAIL_RECEIPT">Απόδειξη λιανικής</option>
-          </select>
-        </label>
+            <label class="field">
+              <span class="field-label">Τύπος παραστατικού</span>
+              <select formControlName="documentType">
+                <option value="SALES_INVOICE">Τιμολόγιο πώλησης</option>
+                <option value="PURCHASE_INVOICE">Τιμολόγιο αγοράς / δαπάνη</option>
+                <option value="CREDIT_NOTE">Πιστωτικό</option>
+                <option value="RETAIL_RECEIPT">Απόδειξη λιανικής</option>
+              </select>
+            </label>
 
-        <label class="field">
-          <span class="field-label">Κωδικός κίνησης</span>
-          <select formControlName="movementCode">
-            <option value="">Αυτόματη επιλογή</option>
-            <option *ngFor="let item of movementCodeOptions" [value]="item.code">
-              {{ item.name }}
-            </option>
-          </select>
-        </label>
+            <label class="field">
+              <span class="field-label">Κωδικός κίνησης</span>
+              <select formControlName="movementCode">
+                <option value="">Αυτόματη επιλογή</option>
+                <option *ngFor="let item of movementCodeOptions" [value]="item.code">
+                  {{ item.name }}
+                </option>
+              </select>
+            </label>
 
-        <label class="field">
-          <span class="field-label">Ημερολόγιο</span>
-          <select formControlName="journalCode">
-            <option value="">Αυτόματη επιλογή</option>
-            <option *ngFor="let item of journalOptions" [value]="item.code">
-              {{ item.name }}
-            </option>
-          </select>
-        </label>
+            <label class="field">
+              <span class="field-label">Ημερολόγιο</span>
+              <select formControlName="journalCode">
+                <option value="">Αυτόματη επιλογή</option>
+                <option *ngFor="let item of journalOptions" [value]="item.code">
+                  {{ item.name }}
+                </option>
+              </select>
+            </label>
 
-        <label class="field">
-          <span class="field-label">Σειρά</span>
-          <input formControlName="series" placeholder="π.χ. Α" />
-        </label>
+            <label class="field">
+              <span class="field-label">Σειρά</span>
+              <input formControlName="series" placeholder="π.χ. Α" />
+            </label>
 
-        <label class="field">
-          <span class="field-label">Αριθμός <span class="req">*</span></span>
-          <input formControlName="documentNumber" />
-          <span class="field-error" *ngIf="showError('documentNumber', 'required')"
-            >Ο αριθμός είναι υποχρεωτικός.</span
-          >
-        </label>
+            <label class="field">
+              <span class="field-label">Αριθμός <span class="req">*</span></span>
+              <input formControlName="documentNumber" />
+              <span class="field-error" *ngIf="showError('documentNumber', 'required')"
+                >Ο αριθμός είναι υποχρεωτικός.</span
+              >
+            </label>
 
-        <label class="field">
-          <span class="field-label">Ημερομηνία έκδοσης <span class="req">*</span></span>
-          <input formControlName="issueDate" type="date" />
-          <span class="field-error" *ngIf="showError('issueDate', 'required')"
-            >Η ημερομηνία είναι υποχρεωτική.</span
-          >
-        </label>
+            <label class="field">
+              <span class="field-label">Ημερομηνία έκδοσης <span class="req">*</span></span>
+              <input formControlName="issueDate" type="date" />
+              <span class="field-error" *ngIf="showError('issueDate', 'required')"
+                >Η ημερομηνία είναι υποχρεωτική.</span
+              >
+            </label>
 
-        <label class="field">
-          <span class="field-label">Κατηγορία ΦΠΑ</span>
-          <select formControlName="vatCategory">
-            <option *ngFor="let item of vatSetupOptions" [value]="vatCategoryCode(item)">
-              {{ item.name }}
-            </option>
-            <option value="VAT_0">0%</option>
-            <option value="NO_VAT">Χωρίς ΦΠΑ</option>
-          </select>
-        </label>
+            <label class="field">
+              <span class="field-label">Κατηγορία ΦΠΑ</span>
+              <select formControlName="vatCategory">
+                <option *ngFor="let item of vatSetupOptions" [value]="vatCategoryCode(item)">
+                  {{ item.name }}
+                </option>
+                <option value="VAT_0">0%</option>
+                <option value="NO_VAT">Χωρίς ΦΠΑ</option>
+              </select>
+            </label>
 
-        <label class="field" *ngIf="form.controls.vatCategory.value === 'VAT_0'">
-          <span class="field-label">Αιτία απαλλαγής ΦΠΑ <span class="req">*</span></span>
-          <select formControlName="vatExemptionCategory">
-            <option [ngValue]="0">Επιλέξτε κωδικό ΑΑΔΕ…</option>
-            <option *ngFor="let category of vatExemptionCategories" [ngValue]="category">
-              {{ category }}
-            </option>
-          </select>
-        </label>
+            <label class="field" *ngIf="form.controls.vatCategory.value === 'VAT_0'">
+              <span class="field-label">Αιτία απαλλαγής ΦΠΑ <span class="req">*</span></span>
+              <select formControlName="vatExemptionCategory">
+                <option [ngValue]="0">Επιλέξτε κωδικό ΑΑΔΕ…</option>
+                <option *ngFor="let category of vatExemptionCategories" [ngValue]="category">
+                  {{ category }}
+                </option>
+              </select>
+            </label>
 
-        <label class="field wide" *ngIf="form.controls.documentType.value === 'CREDIT_NOTE'">
-          <span class="field-label">MARK αρχικού παραστατικού</span>
-          <input
-            formControlName="correlatedInvoiceMark"
-            inputmode="numeric"
-            placeholder="Κενό = μη συσχετιζόμενο πιστωτικό 5.2"
-          />
-          <small>Με MARK αποστέλλεται ως 5.1, χωρίς MARK ως 5.2.</small>
-        </label>
+            <label class="field wide" *ngIf="form.controls.documentType.value === 'CREDIT_NOTE'">
+              <span class="field-label">MARK αρχικού παραστατικού</span>
+              <input
+                formControlName="correlatedInvoiceMark"
+                inputmode="numeric"
+                placeholder="Κενό = μη συσχετιζόμενο πιστωτικό 5.2"
+              />
+              <small>Με MARK αποστέλλεται ως 5.1, χωρίς MARK ως 5.2.</small>
+            </label>
+          </div>
+        </section>
 
-        <label class="field">
-          <span class="field-label">Master data αντισυμβαλλόμενου</span>
-          <select formControlName="counterpartyId">
-            <option value="">Χωρίς επιλογή / νέος</option>
-            <option *ngFor="let counterparty of counterpartyOptions" [value]="counterparty.id">
-              {{ counterparty.name }} — {{ counterparty.vatNumber || '-' }}
-            </option>
-          </select>
-        </label>
+        <section class="form-section counterparty-section">
+          <div class="section-heading">
+            <div>
+              <h2>2. Αντισυμβαλλόμενος</h2>
+              <p>Επιλογή από master data ή γρήγορη καταχώριση νέου.</p>
+            </div>
+          </div>
+          <div class="form-section-grid counterparty-grid">
+            <label class="field">
+              <span class="field-label">Master data αντισυμβαλλόμενου</span>
+              <select formControlName="counterpartyId">
+                <option value="">Χωρίς επιλογή / νέος</option>
+                <option *ngFor="let counterparty of counterpartyOptions" [value]="counterparty.id">
+                  {{ counterparty.name }} — {{ counterparty.vatNumber || '-' }}
+                </option>
+              </select>
+            </label>
 
-        <label class="field">
-          <span class="field-label">Ονομασία αντισυμβαλλόμενου</span>
-          <input formControlName="counterpartyName" placeholder="Ονομασία αντισυμβαλλόμενου" />
-        </label>
+            <label class="field">
+              <span class="field-label">Ονομασία αντισυμβαλλόμενου</span>
+              <input formControlName="counterpartyName" placeholder="Ονομασία αντισυμβαλλόμενου" />
+            </label>
 
-        <label class="field">
-          <span class="field-label">ΑΦΜ αντισυμβαλλόμενου</span>
-          <input
-            formControlName="counterpartyVatNumber"
-            inputmode="numeric"
-            placeholder="9 ψηφία"
-          />
-        </label>
+            <label class="field">
+              <span class="field-label">ΑΦΜ αντισυμβαλλόμενου</span>
+              <input
+                formControlName="counterpartyVatNumber"
+                inputmode="numeric"
+                placeholder="9 ψηφία"
+              />
+            </label>
 
-        <div class="counterparty-actions">
-          <button class="btn btn-xs btn-secondary" type="button" (click)="saveCounterparty()">
-            <span class="material-symbols-outlined">person_add</span>
-            Αποθήκευση master data
-          </button>
-          <span *ngIf="counterpartyMessage">{{ counterpartyMessage }}</span>
-        </div>
+            <div class="counterparty-actions">
+              <button class="btn btn-xs btn-secondary" type="button" (click)="saveCounterparty()">
+                <span class="material-symbols-outlined">person_add</span>
+                Αποθήκευση master data
+              </button>
+              <span *ngIf="counterpartyMessage">{{ counterpartyMessage }}</span>
+            </div>
+          </div>
+        </section>
 
         <section class="lines-section">
           <div class="section-heading">
             <div>
-              <h2>Γραμμές παραστατικού</h2>
+              <h2>3. Γραμμές παραστατικού</h2>
               <p>Κάθε γραμμή έχει δικό της ΦΠΑ και αποστέλλεται χωριστά στο myDATA.</p>
             </div>
             <button class="btn btn-xs btn-secondary" type="button" (click)="addLine()">
@@ -223,24 +243,87 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
               <details class="line-advanced">
                 <summary>Χαρακτηρισμοί, έκπτωση και φόροι γραμμής</summary>
                 <div class="line-advanced-fields">
-                  <label class="field"><span class="field-label">Τιμή μονάδας (€)</span><input formControlName="unitPrice" type="number" min="0" step="0.01" /></label>
-                  <label class="field"><span class="field-label">Έκπτωση (€)</span><input formControlName="discountAmount" type="number" min="0" step="0.01" /></label>
-                  <label class="field checkbox-field"><input formControlName="discountOption" type="checkbox" /> <span class="field-label">Έκπτωση ανά γραμμή</span></label>
-                  <label class="field"><span class="field-label">Απαλλαγή ΦΠΑ</span><select formControlName="vatExemptionCategory"><option [ngValue]="0">—</option><option *ngFor="let category of vatExemptionCategories" [ngValue]="category">{{ category }}</option></select></label>
-                  <label class="field"><span class="field-label">Έσοδο type</span><input formControlName="incomeClassificationType" placeholder="E3_..." /></label>
-                  <label class="field"><span class="field-label">Έσοδο category</span><input formControlName="incomeClassificationCategory" placeholder="category1_..." /></label>
-                  <label class="field"><span class="field-label">Έξοδο type</span><input formControlName="expenseClassificationType" placeholder="E3_..." /></label>
-                  <label class="field"><span class="field-label">Έξοδο category</span><input formControlName="expenseClassificationCategory" placeholder="category2_..." /></label>
-                  <label class="field"><span class="field-label">VAT classification</span><input formControlName="vatClassificationType" placeholder="VAT_361" /></label>
-                  <label class="field"><span class="field-label">Παρακράτηση (€)</span><input formControlName="withheldAmount" type="number" min="0" step="0.01" /></label>
-                  <label class="field"><span class="field-label">Κατηγορία παρακράτησης</span><input formControlName="withheldCategory" type="number" min="1" max="18" /></label>
-                  <label class="field"><span class="field-label">Τέλη (€)</span><input formControlName="feesAmount" type="number" min="0" step="0.01" /></label>
-                  <label class="field"><span class="field-label">Κατηγορία τελών</span><input formControlName="feesCategory" type="number" min="1" max="22" /></label>
-                  <label class="field"><span class="field-label">Ψηφιακό τέλος (€)</span><input formControlName="stampDutyAmount" type="number" min="0" step="0.01" /></label>
-                  <label class="field"><span class="field-label">Κατηγορία ψηφιακού τέλους</span><input formControlName="stampDutyCategory" type="number" min="1" max="4" /></label>
-                  <label class="field"><span class="field-label">Λοιποί φόροι (€)</span><input formControlName="otherTaxesAmount" type="number" min="0" step="0.01" /></label>
-                  <label class="field"><span class="field-label">Κατηγορία λοιπών φόρων</span><input formControlName="otherTaxesCategory" type="number" min="1" max="30" /></label>
-                  <label class="field"><span class="field-label">Κρατήσεις / αφαιρέσεις (€)</span><input formControlName="deductionsAmount" type="number" min="0" step="0.01" /></label>
+                  <label class="field"
+                    ><span class="field-label">Τιμή μονάδας (€)</span
+                    ><input formControlName="unitPrice" type="number" min="0" step="0.01"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Έκπτωση (€)</span
+                    ><input formControlName="discountAmount" type="number" min="0" step="0.01"
+                  /></label>
+                  <label class="field checkbox-field"
+                    ><input formControlName="discountOption" type="checkbox" />
+                    <span class="field-label">Έκπτωση ανά γραμμή</span></label
+                  >
+                  <label class="field"
+                    ><span class="field-label">Απαλλαγή ΦΠΑ</span
+                    ><select formControlName="vatExemptionCategory">
+                      <option [ngValue]="0">—</option>
+                      <option *ngFor="let category of vatExemptionCategories" [ngValue]="category">
+                        {{ category }}
+                      </option>
+                    </select></label
+                  >
+                  <label class="field"
+                    ><span class="field-label">Έσοδο type</span
+                    ><input formControlName="incomeClassificationType" placeholder="E3_..."
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Έσοδο category</span
+                    ><input
+                      formControlName="incomeClassificationCategory"
+                      placeholder="category1_..."
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Έξοδο type</span
+                    ><input formControlName="expenseClassificationType" placeholder="E3_..."
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Έξοδο category</span
+                    ><input
+                      formControlName="expenseClassificationCategory"
+                      placeholder="category2_..."
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">VAT classification</span
+                    ><input formControlName="vatClassificationType" placeholder="VAT_361"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Παρακράτηση (€)</span
+                    ><input formControlName="withheldAmount" type="number" min="0" step="0.01"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Κατηγορία παρακράτησης</span
+                    ><input formControlName="withheldCategory" type="number" min="1" max="18"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Τέλη (€)</span
+                    ><input formControlName="feesAmount" type="number" min="0" step="0.01"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Κατηγορία τελών</span
+                    ><input formControlName="feesCategory" type="number" min="1" max="22"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Ψηφιακό τέλος (€)</span
+                    ><input formControlName="stampDutyAmount" type="number" min="0" step="0.01"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Κατηγορία ψηφιακού τέλους</span
+                    ><input formControlName="stampDutyCategory" type="number" min="1" max="4"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Λοιποί φόροι (€)</span
+                    ><input formControlName="otherTaxesAmount" type="number" min="0" step="0.01"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Κατηγορία λοιπών φόρων</span
+                    ><input formControlName="otherTaxesCategory" type="number" min="1" max="30"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Κρατήσεις / αφαιρέσεις (€)</span
+                    ><input formControlName="deductionsAmount" type="number" min="0" step="0.01"
+                  /></label>
                 </div>
               </details>
               <button
@@ -257,6 +340,12 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         </section>
 
         <div class="amounts-section">
+          <div class="section-heading amounts-heading">
+            <div>
+              <h2>4. Σύνολα παραστατικού</h2>
+              <p>Έλεγχος καθαρής αξίας, ΦΠΑ και τελικού ποσού.</p>
+            </div>
+          </div>
           <div class="amounts-row">
             <label class="field">
               <span class="field-label">Καθαρή αξία (€)</span>
@@ -298,7 +387,7 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         <section class="payments-section">
           <div class="section-heading">
             <div>
-              <h2>Τρόποι πληρωμής</h2>
+              <h2>5. Τρόποι πληρωμής</h2>
               <p>Το άθροισμα των πληρωμών πρέπει να ισούται με το σύνολο του παραστατικού.</p>
             </div>
             <button class="btn btn-xs btn-secondary" type="button" (click)="addPayment()">
@@ -333,29 +422,34 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
                 ><span class="field-label">Πληροφορίες</span
                 ><input formControlName="paymentMethodInfo" placeholder="π.χ. POS front desk"
               /></label>
-              <label class="field"
-                ><span class="field-label">transactionId</span
-                ><input formControlName="transactionId"
-              /></label>
-              <label class="field"
-                ><span class="field-label">TID</span><input formControlName="tid"
-              /></label>
-              <label class="field"
-                ><span class="field-label">Provider signing author</span
-                ><input formControlName="providerSigningAuthor" placeholder="Πάροχος POS"
-              /></label>
-              <label class="field"
-                ><span class="field-label">Provider signature</span
-                ><input formControlName="providerSignature" placeholder="Υπογραφή παρόχου"
-              /></label>
-              <label class="field"
-                ><span class="field-label">ECR signing author</span
-                ><input formControlName="ecrSigningAuthor" placeholder="ECR / ταμειακή"
-              /></label>
-              <label class="field"
-                ><span class="field-label">ECR session (6 ψηφία)</span
-                ><input formControlName="ecrSessionNumber" inputmode="numeric" maxlength="6"
-              /></label>
+              <details class="payment-advanced disclosure">
+                <summary>Στοιχεία POS / ECR / παρόχου</summary>
+                <div class="payment-advanced-fields">
+                  <label class="field"
+                    ><span class="field-label">transactionId</span
+                    ><input formControlName="transactionId"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">TID</span><input formControlName="tid"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Provider signing author</span
+                    ><input formControlName="providerSigningAuthor" placeholder="Πάροχος POS"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">Provider signature</span
+                    ><input formControlName="providerSignature" placeholder="Υπογραφή παρόχου"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">ECR signing author</span
+                    ><input formControlName="ecrSigningAuthor" placeholder="ECR / ταμειακή"
+                  /></label>
+                  <label class="field"
+                    ><span class="field-label">ECR session (6 ψηφία)</span
+                    ><input formControlName="ecrSessionNumber" inputmode="numeric" maxlength="6"
+                  /></label>
+                </div>
+              </details>
               <button
                 class="btn btn-xs btn-danger remove-payment"
                 type="button"
@@ -372,15 +466,26 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
             [class.payment-balance-ok]="paymentDifference() === 0"
             [class.payment-balance-error]="paymentDifference() !== 0"
           >
-            <span class="material-symbols-outlined">{{ paymentDifference() === 0 ? 'check_circle' : 'error' }}</span>
-            Πληρωμές: {{ paymentTotal() | number: '1.2-2' }} € · Σύνολο: {{ form.controls.totalAmount.value | number: '1.2-2' }} €
-            <strong *ngIf="paymentDifference() !== 0"> · Διαφορά: {{ paymentDifference() | number: '1.2-2' }} €</strong>
+            <span class="material-symbols-outlined">{{
+              paymentDifference() === 0 ? 'check_circle' : 'error'
+            }}</span>
+            Πληρωμές: {{ paymentTotal() | number: '1.2-2' }} € · Σύνολο:
+            {{ form.controls.totalAmount.value | number: '1.2-2' }} €
+            <strong *ngIf="paymentDifference() !== 0">
+              · Διαφορά: {{ paymentDifference() | number: '1.2-2' }} €</strong
+            >
           </div>
         </section>
 
-        <div class="taxes-section">
-          <h2>Φόροι και κρατήσεις myDATA</h2>
-          <p>Η κατηγορία είναι υποχρεωτική όταν υπάρχει αντίστοιχο ποσό.</p>
+        <details class="taxes-section disclosure">
+          <summary>
+            <span>
+              <strong>6. Πρόσθετοι φόροι και κρατήσεις myDATA</strong>
+              <small
+                >Ανοίξτε μόνο όταν το παραστατικό έχει παρακράτηση, τέλη ή λοιπούς φόρους.</small
+              >
+            </span>
+          </summary>
           <div class="taxes-grid">
             <label class="field">
               <span class="field-label">Παρακράτηση (€)</span>
@@ -419,7 +524,7 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
               <input formControlName="deductionsAmount" type="number" min="0" step="0.01" />
             </label>
           </div>
-        </div>
+        </details>
       </div>
 
       <div class="form-footer">
@@ -449,14 +554,15 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         font-size: 16px;
       }
 
-      .doc-form {
-      }
-
       .form-body {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
-        gap: 14px 20px;
-        padding: 20px 20px 0;
+        gap: 16px 20px;
+        padding: 20px;
+      }
+
+      .form-section {
+        grid-column: 1 / -1;
       }
 
       .field {
@@ -481,15 +587,6 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         grid-column: 1 / -1;
       }
 
-      .amounts-section {
-        grid-column: 1 / -1;
-      }
-
-      .lines-section {
-        grid-column: 1 / -1;
-        border-top: 1px solid var(--border);
-        padding-top: 12px;
-      }
       .section-heading {
         display: flex;
         align-items: center;
@@ -518,8 +615,8 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         align-items: end;
         padding: 10px;
         border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--surface-2);
+        border-radius: var(--radius-md);
+        background: var(--surface);
       }
       .line-number {
         align-self: center;
@@ -557,16 +654,6 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         width: auto;
       }
 
-      .taxes-section {
-        grid-column: 1 / -1;
-        padding-top: 8px;
-        border-top: 1px solid var(--border);
-      }
-      .payments-section {
-        grid-column: 1 / -1;
-        padding-top: 8px;
-        border-top: 1px solid var(--border);
-      }
       .document-payments {
         display: flex;
         flex-direction: column;
@@ -574,15 +661,17 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
       }
       .document-payment {
         display: grid;
-        grid-template-columns: repeat(9, minmax(100px, 1fr)) 32px;
+        grid-template-columns: minmax(190px, 1.1fr) minmax(120px, 0.55fr) minmax(210px, 1fr) 32px;
         gap: 10px;
         align-items: end;
         padding: 10px;
         border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--surface-2);
+        border-radius: var(--radius-md);
+        background: var(--surface);
       }
       .remove-payment {
+        grid-column: -2 / -1;
+        grid-row: 1;
         height: 34px;
         padding: 0;
         justify-content: center;
@@ -608,10 +697,6 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         color: var(--err);
         background: var(--err-bg);
       }
-      .taxes-section h2 {
-        margin: 0;
-        font-size: 0.95rem;
-      }
       .taxes-section p,
       .field small {
         margin: 3px 0 10px;
@@ -622,6 +707,8 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 14px 20px;
+        padding: 16px;
+        background: var(--surface);
       }
 
       .counterparty-actions {
@@ -668,7 +755,7 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         justify-content: flex-end;
         padding: 14px 20px 18px;
         border-top: 1px solid var(--border);
-        margin-top: 16px;
+        background: var(--surface-2);
         gap: 14px;
         align-items: center;
       }
@@ -706,6 +793,11 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
         }
         .document-payment {
           grid-template-columns: 1fr;
+        }
+        .remove-payment,
+        .payment-advanced {
+          grid-column: 1;
+          grid-row: auto;
         }
       }
     `,
@@ -885,8 +977,8 @@ export class DocumentFormPageComponent implements OnInit {
       vatCategory: line.vatCategory,
       vatExemptionCategory:
         line.vatCategory === 'VAT_0'
-          ? positiveOrUndefined(line.vatExemptionCategory) ??
-            (index === 0 ? positiveOrUndefined(value.vatExemptionCategory) : undefined)
+          ? (positiveOrUndefined(line.vatExemptionCategory) ??
+            (index === 0 ? positiveOrUndefined(value.vatExemptionCategory) : undefined))
           : undefined,
       withheldAmount: lineTaxValue(line.withheldAmount, value.withheldAmount, index),
       withheldCategory:
@@ -966,7 +1058,8 @@ export class DocumentFormPageComponent implements OnInit {
           void this.router.navigate(['/documents']);
         },
         error: () => {
-          this.formMessage = 'Δεν δημιουργήθηκε το παραστατικό. Έλεγξε τα στοιχεία και δοκίμασε ξανά.';
+          this.formMessage =
+            'Δεν δημιουργήθηκε το παραστατικό. Έλεγξε τα στοιχεία και δοκίμασε ξανά.';
         },
       });
   }
@@ -1119,8 +1212,8 @@ export class DocumentFormPageComponent implements OnInit {
     return this.formBuilder.nonNullable.group({
       description: [''],
       itemCode: [''],
-      quantity: [0],
-      measurementUnit: [0],
+      quantity: [1],
+      measurementUnit: [1],
       unitPrice: [0],
       discountAmount: [0],
       discountOption: [false],
@@ -1188,7 +1281,10 @@ export class DocumentFormPageComponent implements OnInit {
 
   paymentTotal(): number {
     return roundMoney(
-      this.paymentControls.reduce((total, payment) => total + Number(payment.controls.amount.value), 0),
+      this.paymentControls.reduce(
+        (total, payment) => total + Number(payment.controls.amount.value),
+        0,
+      ),
     );
   }
 
@@ -1293,11 +1389,7 @@ function positiveOrUndefined(value: number | string): number | undefined {
 }
 
 type LineTaxAmountField =
-  | 'withheldAmount'
-  | 'feesAmount'
-  | 'stampDutyAmount'
-  | 'otherTaxesAmount'
-  | 'deductionsAmount';
+  'withheldAmount' | 'feesAmount' | 'stampDutyAmount' | 'otherTaxesAmount' | 'deductionsAmount';
 
 function lineTaxValue(lineAmount: number, headerAmount: number, lineIndex: number): number {
   return Number(lineAmount) > 0 ? Number(lineAmount) : lineIndex === 0 ? Number(headerAmount) : 0;

@@ -2,6 +2,11 @@ import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import {
   ClientEntityType,
   DocumentType,
+  ExpenseClassificationApprovalStatus,
+  MyDataReconciliationStatus,
+  MyDataSnapshotReviewStatus,
+  MyDataSyncRunStatus,
+  MyDataSyncSource,
   MyDataStatus,
   MyDataTransmissionMode,
   Prisma,
@@ -11,6 +16,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { AadeMyDataTestProvider } from './aade-mydata-test.provider';
 import { SyncMyDataDocsSourceDto } from './dto/sync-mydata-docs.dto';
+import { ExpenseClassificationApprovalActionDto } from './dto/approve-expense-classification.dto';
 import { MockMyDataProvider } from './mydata-mock.service';
 import { MyDataMappingService } from './mydata-mapping.service';
 import { MyDataService } from './mydata.service';
@@ -58,6 +64,10 @@ const document = {
   myDataCancelledAt: null,
   myDataXmlPreview: null,
   classificationStatus: null,
+  expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.NOT_REQUESTED,
+  expenseClassificationApprovedById: null,
+  expenseClassificationApprovedAt: null,
+  expenseClassificationApprovalNotes: null,
   createdAt: new Date('2026-07-01T00:00:00.000Z'),
   updatedAt: new Date('2026-07-01T00:00:00.000Z'),
   deletedAt: null,
@@ -320,6 +330,7 @@ describe('MyDataMappingService', () => {
 
 describe('MyDataService', () => {
   let prisma: {
+    $transaction: jest.Mock;
     document: {
       findFirst: jest.Mock;
       findMany: jest.Mock;
@@ -328,17 +339,24 @@ describe('MyDataService', () => {
     };
     clientCompany: {
       findFirst: jest.Mock;
+      findMany: jest.Mock;
     };
     myDataSyncRun: {
       create: jest.Mock;
       update: jest.Mock;
+      findMany: jest.Mock;
     };
     myDataSnapshot: {
       upsert: jest.Mock;
+      groupBy: jest.Mock;
+      findMany: jest.Mock;
     };
     transmissionAttempt: {
       create: jest.Mock;
       findMany: jest.Mock;
+    };
+    auditLog: {
+      create: jest.Mock;
     };
   };
   let provider: jest.Mocked<Pick<MockMyDataProvider, 'providerName' | 'transmitInvoice'>>;
@@ -346,6 +364,7 @@ describe('MyDataService', () => {
     Pick<
       AadeMyDataTestProvider,
       | 'providerName'
+      | 'configuredEnvironment'
       | 'transmitInvoice'
       | 'transmitExpenseClassification'
       | 'cancelInvoice'
@@ -356,6 +375,7 @@ describe('MyDataService', () => {
 
   beforeEach(() => {
     prisma = {
+      $transaction: jest.fn(),
       document: {
         findFirst: jest.fn().mockResolvedValue(document),
         findMany: jest.fn().mockResolvedValue([]),
@@ -364,19 +384,29 @@ describe('MyDataService', () => {
       },
       clientCompany: {
         findFirst: jest.fn().mockResolvedValue(document.clientCompany),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       myDataSyncRun: {
         create: jest.fn().mockResolvedValue({ id: 'sync-1' }),
         update: jest.fn().mockResolvedValue({ id: 'sync-1' }),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       myDataSnapshot: {
         upsert: jest.fn(),
+        groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       transmissionAttempt: {
         create: jest.fn().mockResolvedValue({ id: 'attempt-1' }),
         findMany: jest.fn().mockResolvedValue([{ id: 'attempt-1' }]),
       },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
     };
+    prisma.$transaction.mockImplementation(
+      (callback: (tx: typeof prisma) => unknown) => callback(prisma),
+    );
 
     provider = {
       providerName: 'mock-mydata',
@@ -389,6 +419,7 @@ describe('MyDataService', () => {
     };
     aadeTestProvider = {
       providerName: 'aade-mydata',
+      configuredEnvironment: jest.fn().mockReturnValue('test'),
       transmitInvoice: jest.fn(),
       transmitExpenseClassification: jest.fn(),
       cancelInvoice: jest.fn(),
@@ -643,6 +674,60 @@ describe('MyDataService', () => {
     });
   });
 
+  it('blocks production expense classification without a fresh explicit approval', async () => {
+    aadeTestProvider.configuredEnvironment.mockReturnValue('production');
+    prisma.document.findFirst.mockResolvedValue({
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataMark: '4000012345',
+      classificationStatus: 'EXPENSE_PREPARED',
+      expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.PENDING,
+    });
+
+    await expect(service.sendExpenseTest(tenant, 'document-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(aadeTestProvider.transmitExpenseClassification).not.toHaveBeenCalled();
+  });
+
+  it('records an explicit expense classification approval with audit', async () => {
+    const preparedPurchase = {
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataMark: '4000012345',
+      classificationStatus: 'EXPENSE_PREPARED',
+      expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.PENDING,
+    };
+    prisma.document.findMany.mockResolvedValue([preparedPurchase]);
+    prisma.document.update.mockResolvedValue({
+      ...preparedPurchase,
+      expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.APPROVED,
+    });
+
+    const result = await service.approveExpenseClassification(tenant, 'document-1', {
+      action: ExpenseClassificationApprovalActionDto.APPROVE,
+      notes: 'Checked VAT and expense category.',
+    });
+
+    expect(result.expenseClassificationApprovalStatus).toBe(
+      ExpenseClassificationApprovalStatus.APPROVED,
+    );
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: 'document-1' },
+      data: expect.objectContaining({
+        expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.APPROVED,
+        expenseClassificationApprovedById: 'user-1',
+        expenseClassificationApprovedAt: expect.any(Date),
+      }),
+    });
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entityType: 'ExpenseClassificationApproval',
+        entityId: 'document-1',
+      }),
+    });
+  });
+
   it('cancels an already-sent issued document through the AADE test provider', async () => {
     prisma.document.findFirst.mockResolvedValue({
       ...document,
@@ -782,7 +867,183 @@ describe('MyDataService', () => {
       data: {
         myDataClassificationMark: '9000012345',
         classificationStatus: 'EXPENSE_CLASSIFIED_AADE',
+        expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.CONSUMED,
       },
     });
+  });
+
+  it('synchronizes authorized office clients sequentially and follows AADE pagination', async () => {
+    prisma.clientCompany.findMany.mockResolvedValue([
+      { id: 'company-1', legalName: 'Alpha' },
+      { id: 'company-2', legalName: 'Beta' },
+    ]);
+    const syncRun = {
+      id: 'run-1',
+      accountingOfficeId: 'office-1',
+      clientCompanyId: 'company-1',
+      source: MyDataSyncSource.REQUEST_DOCS,
+      status: MyDataSyncRunStatus.COMPLETED,
+      environment: 'test',
+      endpoint: null,
+      markFrom: '0',
+      maxMark: null,
+      dateFrom: null,
+      dateTo: null,
+      fetchedCount: 0,
+      matchedCount: 0,
+      mismatchCount: 0,
+      errorMessage: null,
+      rawResponse: null,
+      createdAt: new Date(),
+    };
+    const syncSpy = jest
+      .spyOn(service, 'syncRequestDocs')
+      .mockResolvedValueOnce({
+        syncRun,
+        fetchedCount: 10,
+        matchedCount: 8,
+        mismatchCount: 2,
+        cancellationCount: 0,
+        cancellationsApplied: 0,
+        expenseClassificationCount: 0,
+        classificationsApplied: 0,
+        nextPartitionKey: 'partition-1',
+        nextRowKey: 'row-1',
+      })
+      .mockResolvedValueOnce({
+        syncRun: { ...syncRun, id: 'run-2' },
+        fetchedCount: 3,
+        matchedCount: 3,
+        mismatchCount: 0,
+        cancellationCount: 0,
+        cancellationsApplied: 0,
+        expenseClassificationCount: 0,
+        classificationsApplied: 0,
+        nextPartitionKey: undefined,
+        nextRowKey: undefined,
+      })
+      .mockResolvedValueOnce({
+        syncRun: { ...syncRun, id: 'run-3', clientCompanyId: 'company-2' },
+        fetchedCount: 5,
+        matchedCount: 4,
+        mismatchCount: 1,
+        cancellationCount: 0,
+        cancellationsApplied: 0,
+        expenseClassificationCount: 0,
+        classificationsApplied: 0,
+        nextPartitionKey: undefined,
+        nextRowKey: undefined,
+      });
+
+    const result = await service.syncOffice(tenant, {
+      sources: [SyncMyDataDocsSourceDto.REQUEST_DOCS],
+      maxPages: 10,
+    });
+
+    expect(syncSpy).toHaveBeenCalledTimes(3);
+    expect(syncSpy).toHaveBeenNthCalledWith(
+      2,
+      tenant,
+      expect.objectContaining({
+        clientCompanyId: 'company-1',
+        nextPartitionKey: 'partition-1',
+        nextRowKey: 'row-1',
+      }),
+    );
+    expect(syncSpy).toHaveBeenNthCalledWith(
+      3,
+      tenant,
+      expect.objectContaining({ clientCompanyId: 'company-2' }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        companyCount: 2,
+        completedCount: 2,
+        failedCount: 0,
+        fetchedCount: 18,
+        matchedCount: 15,
+        mismatchCount: 3,
+      }),
+    );
+  });
+
+  it('starts an incremental office sync from the highest stored MARK', async () => {
+    prisma.clientCompany.findMany.mockResolvedValue([{ id: 'company-1', legalName: 'Alpha' }]);
+    prisma.myDataSnapshot.findMany.mockResolvedValue([
+      { mark: '9' },
+      { mark: '100' },
+      { mark: '20' },
+    ]);
+    const syncSpy = jest.spyOn(service, 'syncRequestDocs').mockResolvedValue({
+      syncRun: { id: 'run-1' } as never,
+      fetchedCount: 0,
+      matchedCount: 0,
+      mismatchCount: 0,
+      cancellationCount: 0,
+      cancellationsApplied: 0,
+      expenseClassificationCount: 0,
+      classificationsApplied: 0,
+      nextPartitionKey: undefined,
+      nextRowKey: undefined,
+    });
+
+    await service.syncOffice(tenant, {
+      sources: [SyncMyDataDocsSourceDto.REQUEST_DOCS],
+      maxPages: 1,
+      incremental: true,
+    });
+
+    expect(syncSpy).toHaveBeenCalledWith(
+      tenant,
+      expect.objectContaining({ clientCompanyId: 'company-1', mark: '100' }),
+    );
+  });
+
+  it('builds an office-wide exception dashboard without exposing raw AADE payloads', async () => {
+    prisma.clientCompany.findMany.mockResolvedValue([
+      {
+        id: 'company-1',
+        legalName: 'Alpha',
+        vatNumber: '999888777',
+        myDataAuthorized: true,
+        myDataMode: MyDataTransmissionMode.ACCOUNTING_OFFICE_AUTHORIZED,
+      },
+    ]);
+    prisma.myDataSnapshot.groupBy.mockResolvedValue([
+      {
+        clientCompanyId: 'company-1',
+        source: MyDataSyncSource.REQUEST_DOCS,
+        reconciliationStatus: MyDataReconciliationStatus.MATCHED,
+        reviewStatus: MyDataSnapshotReviewStatus.RESOLVED,
+        _count: { _all: 12 },
+        _sum: { totalAmount: new Prisma.Decimal(1200) },
+      },
+      {
+        clientCompanyId: 'company-1',
+        source: MyDataSyncSource.REQUEST_DOCS,
+        reconciliationStatus: MyDataReconciliationStatus.MISSING_INTERNAL,
+        reviewStatus: MyDataSnapshotReviewStatus.PENDING,
+        _count: { _all: 3 },
+        _sum: { totalAmount: new Prisma.Decimal(300) },
+      },
+    ]);
+    prisma.myDataSnapshot.findMany.mockResolvedValue([{ id: 'snapshot-1' }]);
+
+    const result = await service.officeDashboard(tenant, {});
+
+    expect(result.overview).toEqual({
+      companyCount: 1,
+      authorizedCompanyCount: 1,
+      totalCount: 15,
+      matchedCount: 12,
+      missingInternalCount: 3,
+      mismatchCount: 0,
+      companiesNeedingReviewCount: 1,
+      failedSyncCountLast24Hours: 0,
+    });
+    expect(result.companies[0]).toEqual(
+      expect.objectContaining({ totalCount: 15, totalAmount: 1500 }),
+    );
+    expect(result.exceptions).toEqual([{ id: 'snapshot-1' }]);
   });
 });

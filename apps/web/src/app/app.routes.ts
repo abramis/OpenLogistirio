@@ -64,6 +64,14 @@ export const routes: Routes = [
     canMatch: [authMatchGuard],
   },
   {
+    path: 'mydata',
+    loadComponent: () =>
+      import('./features/mydata/mydata-office-page.component').then(
+        (m) => m.MyDataOfficePageComponent,
+      ),
+    canMatch: [authMatchGuard],
+  },
+  {
     path: 'vat-book',
     loadComponent: () =>
       import('./features/vat/vat-book-page.component').then((m) => m.VatBookPageComponent),
@@ -98,6 +106,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/fixed-assets/fixed-assets-page.component').then(
         (m) => m.FixedAssetsPageComponent,
+      ),
+    canMatch: [authMatchGuard],
+  },
+  {
+    path: 'digital-movement',
+    loadComponent: () =>
+      import('./features/digital-movement/digital-movement-page.component').then(
+        (m) => m.DigitalMovementPageComponent,
       ),
     canMatch: [authMatchGuard],
   },

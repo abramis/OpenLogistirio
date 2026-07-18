@@ -201,6 +201,53 @@ enum MyDataReconciliationStatus {
   COUNTERPARTY_MISMATCH
 }
 
+enum MyDataSnapshotReviewStatus {
+  PENDING
+  RESOLVED
+  IGNORED
+}
+
+enum ExpenseClassificationApprovalStatus {
+  NOT_REQUESTED
+  PENDING
+  APPROVED
+  REJECTED
+  CONSUMED
+}
+
+enum DispatchNoteStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_RECEIVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryOutcome {
+  FULL
+  PARTIAL
+  NONE
+}
+
+enum DispatchEventType {
+  CREATED
+  UPDATED
+  ISSUED
+  DELIVERY_COMPLETED
+  DELIVERY_PARTIAL
+  DELIVERY_REJECTED
+  CANCELLED
+}
+
+enum StockMovementKind {
+  ADJUSTMENT
+  DISPATCH_OUT
+  DELIVERY_IN
+  CANCEL_OUT_REVERSAL
+  CANCEL_IN_REVERSAL
+}
+
 model AccountingOffice {
   id        String   @id @default(cuid())
   name      String
@@ -231,6 +278,13 @@ model AccountingOffice {
   myDataSnapshots       MyDataSnapshot[]
   periodCloseReviews    PeriodCloseReview[]
   supportingDocuments  SupportingDocument[]
+  inventoryItems       InventoryItem[]
+  warehouses           Warehouse[]
+  vehicles             Vehicle[]
+  dispatchNotes        DispatchNote[]
+  stockMovements       StockMovement[]
+  dispatchReceipts     DispatchDeliveryReceipt[]
+  dispatchEvents       DispatchLifecycleEvent[]
 }
 
 model User {
@@ -255,6 +309,8 @@ model User {
   preparedPeriodCloseReviews    PeriodCloseReview[]    @relation("PeriodClosePreparedBy")
   approvedPeriodCloseReviews    PeriodCloseReview[]    @relation("PeriodCloseApprovedBy")
   approvedDeclarationWorkpapers DeclarationWorkpaper[] @relation("DeclarationWorkpaperApprovedBy")
+  reviewedMyDataSnapshots         MyDataSnapshot[]      @relation("MyDataSnapshotReviewedBy")
+  approvedExpenseClassifications Document[]            @relation("ExpenseClassificationApprovedBy")
 
   @@index([accountingOfficeId])
   @@index([disabledAt])
@@ -329,6 +385,13 @@ model ClientCompany {
   myDataSnapshots       MyDataSnapshot[]
   periodCloseReviews    PeriodCloseReview[]
   supportingDocuments  SupportingDocument[]
+  inventoryItems       InventoryItem[]
+  warehouses           Warehouse[]
+  vehicles             Vehicle[]
+  dispatchNotes        DispatchNote[]
+  stockMovements       StockMovement[]
+  dispatchReceipts     DispatchDeliveryReceipt[]
+  dispatchEvents       DispatchLifecycleEvent[]
 
   @@unique([accountingOfficeId, vatNumber])
   @@index([accountingOfficeId, deletedAt])
@@ -510,9 +573,237 @@ model Counterparty {
 
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  dispatchNotes    DispatchNote[]
 
   @@index([accountingOfficeId, clientCompanyId, type])
   @@index([clientCompanyId, vatNumber])
+}
+
+model InventoryItem {
+  id                 String   @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  code               String   @db.VarChar(50)
+  name               String   @db.VarChar(200)
+  description        String?
+  measurementUnit    Int      @default(1)
+  trackInventory     Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  balances         WarehouseStock[]
+  dispatchLines    DispatchNoteLine[]
+  stockMovements   StockMovement[]
+
+  @@unique([clientCompanyId, code], map: "InventoryItem_client_code_key")
+  @@index([accountingOfficeId, clientCompanyId, isActive], map: "InventoryItem_office_client_active_idx")
+}
+
+model Warehouse {
+  id                 String   @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  code               String   @db.VarChar(40)
+  name               String   @db.VarChar(200)
+  address             String?
+  branchNumber        Int?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  deletedAt           DateTime?
+
+  accountingOffice     AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany        ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  balances             WarehouseStock[]
+  outgoingDispatches   DispatchNote[]   @relation("DispatchLoadingWarehouse")
+  incomingDispatches   DispatchNote[]   @relation("DispatchDeliveryWarehouse")
+  stockMovements       StockMovement[]
+
+  @@unique([clientCompanyId, code], map: "Warehouse_client_code_key")
+  @@index([accountingOfficeId, clientCompanyId, isActive], map: "Warehouse_office_client_active_idx")
+}
+
+model Vehicle {
+  id                 String   @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  registrationNumber String   @db.VarChar(40)
+  description        String?
+  vehicleType        String?  @db.VarChar(80)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  dispatchNotes    DispatchNote[]
+
+  @@unique([clientCompanyId, registrationNumber], map: "Vehicle_client_registration_key")
+  @@index([accountingOfficeId, clientCompanyId, isActive], map: "Vehicle_office_client_active_idx")
+}
+
+model WarehouseStock {
+  id          String   @id @default(cuid())
+  warehouseId String
+  itemId      String
+  quantity    Decimal  @default(0) @db.Decimal(14, 3)
+  updatedAt   DateTime @updatedAt
+
+  warehouse Warehouse     @relation(fields: [warehouseId], references: [id])
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@unique([warehouseId, itemId], map: "WarehouseStock_warehouse_item_key")
+  @@index([itemId], map: "WarehouseStock_item_idx")
+}
+
+model DispatchNote {
+  id                    String             @id @default(cuid())
+  accountingOfficeId    String
+  clientCompanyId       String
+  series                String             @db.VarChar(40)
+  number                String             @db.VarChar(80)
+  issueDate             DateTime
+  plannedDispatchAt     DateTime
+  status                DispatchNoteStatus @default(DRAFT)
+  movePurpose           Int
+  otherMovePurposeTitle String?            @db.VarChar(150)
+  counterpartyId        String?
+  recipientName         String?
+  recipientVatNumber    String?            @db.VarChar(20)
+  loadingWarehouseId    String
+  deliveryWarehouseId   String?
+  vehicleId             String?
+  vehicleNumber         String?            @db.VarChar(150)
+  loadingAddress        String
+  deliveryAddress       String
+  notes                 String?
+  issuedAt              DateTime?
+  completedAt           DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  accountingOffice  AccountingOffice  @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany     ClientCompany     @relation(fields: [clientCompanyId], references: [id])
+  counterparty      Counterparty?     @relation(fields: [counterpartyId], references: [id])
+  loadingWarehouse  Warehouse         @relation("DispatchLoadingWarehouse", fields: [loadingWarehouseId], references: [id])
+  deliveryWarehouse Warehouse?        @relation("DispatchDeliveryWarehouse", fields: [deliveryWarehouseId], references: [id])
+  vehicle           Vehicle?          @relation(fields: [vehicleId], references: [id])
+  lines             DispatchNoteLine[]
+  stockMovements    StockMovement[]
+  deliveryReceipt   DispatchDeliveryReceipt?
+  lifecycleEvents   DispatchLifecycleEvent[]
+
+  @@unique([clientCompanyId, series, number], map: "DispatchNote_client_series_number_key")
+  @@index([accountingOfficeId, clientCompanyId, status, plannedDispatchAt], map: "DispatchNote_office_client_status_date_idx")
+  @@index([counterpartyId], map: "DispatchNote_counterparty_idx")
+  @@index([vehicleId], map: "DispatchNote_vehicle_idx")
+}
+
+model DispatchNoteLine {
+  id                        String   @id @default(cuid())
+  dispatchNoteId            String
+  itemId                    String
+  lineNumber                Int
+  itemCode                  String   @db.VarChar(50)
+  description               String   @db.VarChar(300)
+  quantity                  Decimal  @db.Decimal(14, 3)
+  measurementUnit           Int
+  movePurposeLine           Int?
+  otherMovePurposeLineTitle String?  @db.VarChar(150)
+  createdAt                 DateTime @default(now())
+
+  dispatchNote  DispatchNote    @relation(fields: [dispatchNoteId], references: [id], onDelete: Cascade)
+  item          InventoryItem   @relation(fields: [itemId], references: [id])
+  stockMovements StockMovement[]
+  receiptLine    DispatchDeliveryReceiptLine?
+
+  @@unique([dispatchNoteId, lineNumber], map: "DispatchNoteLine_note_line_key")
+  @@index([itemId], map: "DispatchNoteLine_item_idx")
+}
+
+model StockMovement {
+  id                 String            @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  warehouseId        String
+  itemId             String
+  dispatchNoteId     String?
+  dispatchNoteLineId String?
+  kind               StockMovementKind
+  quantity           Decimal           @db.Decimal(14, 3)
+  occurredAt         DateTime
+  createdAt          DateTime          @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  warehouse        Warehouse        @relation(fields: [warehouseId], references: [id])
+  item             InventoryItem    @relation(fields: [itemId], references: [id])
+  dispatchNote     DispatchNote?     @relation(fields: [dispatchNoteId], references: [id])
+  dispatchNoteLine DispatchNoteLine? @relation(fields: [dispatchNoteLineId], references: [id])
+
+  @@unique([dispatchNoteLineId, warehouseId, kind], map: "StockMovement_line_warehouse_kind_key")
+  @@index([accountingOfficeId, clientCompanyId, occurredAt], map: "StockMovement_office_client_date_idx")
+  @@index([warehouseId, itemId, occurredAt], map: "StockMovement_warehouse_item_date_idx")
+}
+
+model DispatchDeliveryReceipt {
+  id                        String          @id @default(cuid())
+  accountingOfficeId        String
+  clientCompanyId           String
+  dispatchNoteId            String          @unique
+  outcome                   DeliveryOutcome
+  deliveredWithoutRecipient Boolean         @default(false)
+  receivedAt                DateTime
+  notes                     String?
+  createdAt                 DateTime         @default(now())
+
+  accountingOffice AccountingOffice             @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany                @relation(fields: [clientCompanyId], references: [id])
+  dispatchNote     DispatchNote                 @relation(fields: [dispatchNoteId], references: [id])
+  lines            DispatchDeliveryReceiptLine[]
+
+  @@index([accountingOfficeId, clientCompanyId, receivedAt], map: "DispatchReceipt_office_client_date_idx")
+}
+
+model DispatchDeliveryReceiptLine {
+  id                 String   @id @default(cuid())
+  receiptId          String
+  dispatchNoteLineId String   @unique
+  orderedQuantity    Decimal  @db.Decimal(14, 3)
+  acceptedQuantity   Decimal  @db.Decimal(14, 3)
+  rejectedQuantity   Decimal  @db.Decimal(14, 3)
+  missingQuantity    Decimal  @db.Decimal(14, 3)
+  qualityNotes       String?
+  createdAt          DateTime @default(now())
+
+  receipt          DispatchDeliveryReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  dispatchNoteLine DispatchNoteLine         @relation(fields: [dispatchNoteLineId], references: [id])
+
+  @@index([receiptId], map: "DispatchReceiptLine_receipt_idx")
+}
+
+model DispatchLifecycleEvent {
+  id                 String            @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  dispatchNoteId     String
+  eventType          DispatchEventType
+  eventAt            DateTime
+  details            Json?
+  createdAt          DateTime          @default(now())
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  dispatchNote     DispatchNote     @relation(fields: [dispatchNoteId], references: [id], onDelete: Cascade)
+
+  @@index([accountingOfficeId, clientCompanyId, eventAt], map: "DispatchEvent_office_client_date_idx")
+  @@index([dispatchNoteId, eventAt], map: "DispatchEvent_note_date_idx")
 }
 
 model SupportingDocument {
@@ -798,6 +1089,10 @@ model Document {
   myDataCancelledAt        DateTime?
   myDataXmlPreview         String?      @db.LongText
   classificationStatus     String?
+  expenseClassificationApprovalStatus ExpenseClassificationApprovalStatus @default(NOT_REQUESTED)
+  expenseClassificationApprovedById   String?
+  expenseClassificationApprovedAt     DateTime?
+  expenseClassificationApprovalNotes  String? @db.VarChar(500)
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
   deletedAt                DateTime?
@@ -814,11 +1109,16 @@ model Document {
   replacedByDocuments  Document[]                @relation("DocumentReplacement")
   correctsDocument     Document?                 @relation("DocumentCorrection", fields: [correctsDocumentId], references: [id])
   correctedByDocuments Document[]                @relation("DocumentCorrection")
+  expenseClassificationApprovedBy User?          @relation("ExpenseClassificationApprovedBy", fields: [expenseClassificationApprovedById], references: [id])
 
   @@index([accountingOfficeId, clientCompanyId, issueDate])
   @@index([accountingOfficeId, myDataStatus])
+  @@unique([clientCompanyId, myDataMark], map: "Document_client_mydata_mark_key")
+  @@unique([clientCompanyId, myDataUid], map: "Document_client_mydata_uid_key")
   @@index([myDataClassificationMark])
   @@index([myDataCancellationMark])
+  @@index([accountingOfficeId, expenseClassificationApprovalStatus])
+  @@index([expenseClassificationApprovedById])
   @@index([clientCompanyId, movementCode, issueDate])
   @@index([clientCompanyId, journalCode, issueDate])
   @@index([replacesDocumentId])
@@ -922,6 +1222,10 @@ model MyDataSnapshot {
   source                MyDataSyncSource
   reconciliationStatus  MyDataReconciliationStatus
   reconciliationIssues  Json?
+  reviewStatus           MyDataSnapshotReviewStatus @default(PENDING)
+  reviewedById           String?
+  reviewedAt             DateTime?
+  reviewNotes            String?
   mark                  String                     @db.VarChar(40)
   uid                   String?                    @db.VarChar(120)
   qrUrl                 String?
@@ -941,11 +1245,14 @@ model MyDataSnapshot {
   clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
   syncRun          MyDataSyncRun    @relation(fields: [syncRunId], references: [id])
   matchedDocument  Document?        @relation("MyDataSnapshotMatchedDocument", fields: [matchedDocumentId], references: [id])
+  reviewedBy       User?            @relation("MyDataSnapshotReviewedBy", fields: [reviewedById], references: [id])
 
   @@unique([clientCompanyId, source, mark])
   @@index([accountingOfficeId, clientCompanyId, reconciliationStatus], map: "MyDataSnapshot_office_client_status_idx")
   @@index([clientCompanyId, issueDate], map: "MyDataSnapshot_client_issue_idx")
   @@index([matchedDocumentId], map: "MyDataSnapshot_matched_doc_idx")
+  @@index([accountingOfficeId, reviewStatus, fetchedAt], map: "MyDataSnapshot_office_review_fetched_idx")
+  @@index([reviewedById], map: "MyDataSnapshot_reviewed_by_idx")
 }
 
 model TransmissionAttempt {
