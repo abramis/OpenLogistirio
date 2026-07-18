@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  Equals,
   IsEnum,
   IsOptional,
   IsString,
@@ -29,4 +30,15 @@ export class BatchApproveExpenseClassificationDto extends ApproveExpenseClassifi
   @ArrayMaxSize(100)
   @IsString({ each: true })
   documentIds!: string[];
+}
+
+export class SendExpenseClassificationBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  documentIds!: string[];
+
+  @Equals('SEND_TO_AADE')
+  confirmation!: 'SEND_TO_AADE';
 }

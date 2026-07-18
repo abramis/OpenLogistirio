@@ -337,6 +337,9 @@ describe('MyDataService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
     };
+    documentLine: {
+      update: jest.Mock;
+    };
     clientCompany: {
       findFirst: jest.Mock;
       findMany: jest.Mock;
@@ -381,6 +384,9 @@ describe('MyDataService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue(document),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      documentLine: {
+        update: jest.fn().mockResolvedValue({ id: 'line-1' }),
       },
       clientCompany: {
         findFirst: jest.fn().mockResolvedValue(document.clientCompany),
@@ -431,6 +437,7 @@ describe('MyDataService', () => {
       new MyDataMappingService(),
       provider as MockMyDataProvider,
       aadeTestProvider as unknown as AadeMyDataTestProvider,
+      new MyDataXmlValidationService(),
     );
   });
 
@@ -670,6 +677,101 @@ describe('MyDataService', () => {
         environment: 'test',
         endpoint: 'https://mydataapidev.aade.gr/SendExpensesClassification',
         status: TransmissionStatus.SENT,
+      }),
+    });
+  });
+
+  it('stores an edited per-line expense draft and invalidates prior approval', async () => {
+    const line = {
+      id: 'line-1',
+      documentId: 'document-1',
+      lineNumber: 1,
+      itemCode: 'FUEL',
+      description: 'Καύσιμα',
+      quantity: new Prisma.Decimal('1'),
+      measurementUnit: 3,
+      unitPrice: new Prisma.Decimal('100'),
+      discountAmount: new Prisma.Decimal('0'),
+      discountOption: null,
+      netAmount: new Prisma.Decimal('100'),
+      vatAmount: new Prisma.Decimal('24'),
+      vatCategory: 'VAT_24',
+      vatExemptionCategory: null,
+      withheldAmount: new Prisma.Decimal('0'),
+      withheldCategory: null,
+      feesAmount: new Prisma.Decimal('0'),
+      feesCategory: null,
+      stampDutyAmount: new Prisma.Decimal('0'),
+      stampDutyCategory: null,
+      otherTaxesAmount: new Prisma.Decimal('0'),
+      otherTaxesCategory: null,
+      deductionsAmount: new Prisma.Decimal('0'),
+      incomeClassificationType: null,
+      incomeClassificationCategory: null,
+      expenseClassificationType: 'E3_102_001',
+      expenseClassificationCategory: 'category2_4',
+      vatClassificationType: 'VAT_361',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const purchase = {
+      ...document,
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataMark: '4000012345',
+      myDataStatus: MyDataStatus.READY_TO_SEND,
+      classificationStatus: 'EXPENSE_PREPARED',
+      expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.APPROVED,
+      lines: [line],
+      payments: [],
+    };
+    prisma.document.findFirst.mockResolvedValue(purchase);
+    prisma.document.update.mockResolvedValue({
+      ...purchase,
+      expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.PENDING,
+      lines: [
+        {
+          ...line,
+          expenseClassificationType: 'E3_598_002',
+          expenseClassificationCategory: 'category2_4',
+        },
+      ],
+    });
+
+    const result = await service.updateExpenseClassificationDraft(tenant, 'document-1', {
+      lines: [
+        {
+          lineNumber: 1,
+          expenseClassificationType: 'E3_598_002',
+          expenseClassificationCategory: 'category2_4',
+          vatClassificationType: 'VAT_361',
+        },
+      ],
+    });
+
+    expect(result.xml).toContain('<classificationType>E3_598_002</classificationType>');
+    expect(prisma.documentLine.update).toHaveBeenCalledWith({
+      where: {
+        documentId_lineNumber: { documentId: 'document-1', lineNumber: 1 },
+      },
+      data: {
+        expenseClassificationType: 'E3_598_002',
+        expenseClassificationCategory: 'category2_4',
+        vatClassificationType: 'VAT_361',
+      },
+    });
+    expect(prisma.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'document-1' },
+        data: expect.objectContaining({
+          expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.PENDING,
+          expenseClassificationApprovedById: null,
+        }),
+      }),
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entityType: 'ExpenseClassificationDraft',
+        entityId: 'document-1',
       }),
     });
   });

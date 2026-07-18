@@ -12,6 +12,7 @@ import { AadeMyDataTestProvider } from './aade-mydata-test.provider';
 import { MockMyDataProvider } from './mydata-mock.service';
 import { MyDataMappingService } from './mydata-mapping.service';
 import { MyDataService } from './mydata.service';
+import { MyDataXmlValidationService } from './mydata-xml-validation.service';
 
 const tenant: TenantContext = { accountingOfficeId: 'office-1', userId: 'user-1' };
 const snapshot = {
@@ -92,6 +93,7 @@ describe('MyDataService snapshot resolution', () => {
       new MyDataMappingService(),
       { providerName: 'mock-mydata' } as MockMyDataProvider,
       { providerName: 'aade-mydata' } as AadeMyDataTestProvider,
+      new MyDataXmlValidationService(),
     );
     return { service, prisma, tx };
   }

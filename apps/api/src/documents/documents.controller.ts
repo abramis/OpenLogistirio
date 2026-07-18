@@ -8,7 +8,9 @@ import { SendMyDataDto } from '../mydata/dto/send-mydata.dto';
 import {
   ApproveExpenseClassificationDto,
   BatchApproveExpenseClassificationDto,
+  SendExpenseClassificationBatchDto,
 } from '../mydata/dto/approve-expense-classification.dto';
+import { UpdateExpenseClassificationDraftDto } from '../mydata/dto/update-expense-classification-draft.dto';
 import { MyDataService } from '../mydata/mydata.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { FindDocumentsQueryDto } from './dto/find-documents-query.dto';
@@ -87,6 +89,16 @@ export class DocumentsController {
     return this.myDataService.prepareExpense(tenant, id);
   }
 
+  @Patch(':id/mydata/expense-classification-draft')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  updateExpenseClassificationDraft(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateExpenseClassificationDraftDto,
+  ) {
+    return this.myDataService.updateExpenseClassificationDraft(tenant, id, dto);
+  }
+
   @Post('mydata/expense-approval/batch')
   @Roles(...ACCOUNTING_CONTROL_ROLES)
   approveExpenseClassificationBatch(
@@ -94,6 +106,15 @@ export class DocumentsController {
     @Body() dto: BatchApproveExpenseClassificationDto,
   ) {
     return this.myDataService.approveExpenseClassificationBatch(tenant, dto);
+  }
+
+  @Post('mydata/send-expense-batch')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  sendExpenseClassificationBatch(
+    @CurrentTenant() tenant: TenantContext,
+    @Body() dto: SendExpenseClassificationBatchDto,
+  ) {
+    return this.myDataService.sendExpenseClassificationBatch(tenant, dto);
   }
 
   @Post(':id/mydata/expense-approval')

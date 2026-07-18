@@ -147,9 +147,20 @@ import {
 
       <!-- Table -->
       <div class="table-wrap" *ngIf="vm.documents.length > 0; else noDocuments">
+        <div class="expense-batch-bar" *ngIf="selectedExpenseIds.size > 0">
+          <strong>{{ selectedExpenseIds.size }} επιλεγμένα έξοδα</strong>
+          <span>Η έγκριση δεν αποστέλλει. Η αποστολή απαιτεί ξεχωριστή επιβεβαίωση.</span>
+          <button class="btn btn-sm btn-secondary" type="button" (click)="approveSelectedExpenses()">
+            Έγκριση batch
+          </button>
+          <button class="btn btn-sm btn-danger" type="button" (click)="sendSelectedExpenses()">
+            Αποστολή batch στην ΑΑΔΕ
+          </button>
+        </div>
         <table>
           <thead>
             <tr>
+              <th class="selection-cell"></th>
               <th>Παραστατικό</th>
               <th>Εταιρεία</th>
               <th>Κίνηση</th>
@@ -164,6 +175,15 @@ import {
           </thead>
           <tbody>
             <tr *ngFor="let document of vm.documents">
+              <td class="selection-cell">
+                <input
+                  type="checkbox"
+                  [disabled]="!canSelectExpense(document)"
+                  [checked]="selectedExpenseIds.has(document.id)"
+                  (change)="toggleExpenseSelection(document)"
+                  aria-label="Επιλογή χαρακτηρισμού εξόδου"
+                />
+              </td>
               <td>
                 <strong>{{ document.series || '-' }}/{{ document.documentNumber }}</strong>
                 <small>{{ document.documentType }}</small>
@@ -377,23 +397,50 @@ import {
       </div>
       <div class="expense-preview-body">
         <table>
-          <thead><tr><th>#</th><th>Περιγραφή</th><th>Καθαρή</th><th>ΦΠΑ</th><th>Τύπος</th><th>Κατηγορία</th></tr></thead>
+          <thead><tr><th>#</th><th>Περιγραφή</th><th>Καθαρή</th><th>ΦΠΑ</th><th>Τύπος Ε3</th><th>Κατηγορία</th></tr></thead>
           <tbody>
             <tr *ngFor="let line of preview.lines">
               <td>{{ line.lineNumber }}</td>
               <td>{{ line.description || '—' }}</td>
               <td>{{ line.netAmount | number: '1.2-2' }} €</td>
               <td>{{ line.vatAmount | number: '1.2-2' }} €</td>
-              <td>{{ line.expenseClassificationType }}</td>
-              <td>{{ line.expenseClassificationCategory }}</td>
+              <td>
+                <input
+                  class="classification-input"
+                  list="expense-type-options"
+                  [(ngModel)]="line.expenseClassificationType"
+                  (ngModelChange)="expenseDraftDirty = true"
+                />
+              </td>
+              <td>
+                <select
+                  class="classification-select"
+                  [(ngModel)]="line.expenseClassificationCategory"
+                  (ngModelChange)="expenseDraftDirty = true"
+                >
+                  <option *ngFor="let option of expenseCategoryOptions" [value]="option.value">
+                    {{ option.value }} — {{ option.label }}
+                  </option>
+                </select>
+              </td>
             </tr>
           </tbody>
         </table>
+        <datalist id="expense-type-options">
+          <option *ngFor="let option of expenseTypeOptions" [value]="option.value">
+            {{ option.label }}
+          </option>
+        </datalist>
         <div class="expense-preview-actions">
-          <span>Η έγκριση δεν αποστέλλει στην ΑΑΔΕ. Ξεκλειδώνει μόνο το ελεγχόμενο production send.</span>
-          <button class="btn btn-primary" type="button" (click)="approvePreparedExpense()">
-            Έγκριση μετά τον έλεγχο
-          </button>
+          <span>Κάθε αλλαγή αποθηκεύει νέο XML, ακυρώνει παλιά έγκριση και καταγράφεται στο audit.</span>
+          <div class="expense-action-buttons">
+            <button class="btn btn-secondary" type="button" [disabled]="!expenseDraftDirty" (click)="saveExpenseDraft()">
+              Αποθήκευση draft
+            </button>
+            <button class="btn btn-primary" type="button" [disabled]="expenseDraftDirty" (click)="approvePreparedExpense()">
+              Έγκριση μετά τον έλεγχο
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -552,6 +599,23 @@ import {
         justify-content: flex-end;
         flex-wrap: wrap;
       }
+      .selection-cell {
+        width: 34px;
+        text-align: center;
+      }
+      .expense-batch-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-2);
+      }
+      .expense-batch-bar span {
+        flex: 1;
+        color: var(--text-2);
+        font-size: 0.8rem;
+      }
 
       .preview-panel {
         margin-top: 16px;
@@ -581,6 +645,15 @@ import {
         gap: 12px;
         color: var(--text-2);
         font-size: 0.8125rem;
+      }
+      .expense-action-buttons {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .classification-input,
+      .classification-select {
+        min-width: 210px;
       }
 
       .xml-pre {
@@ -658,8 +731,49 @@ export class DocumentsListPageComponent {
   filters = this.defaultFilters();
   xmlPreview = '';
   expensePreview?: ExpenseClassificationPreview;
+  expenseDraftDirty = false;
+  readonly expenseCategoryOptions = [
+    { value: 'category2_1', label: 'Αγορές εμπορευμάτων' },
+    { value: 'category2_2', label: "Αγορές Α'-Β' υλών" },
+    { value: 'category2_3', label: 'Λήψη υπηρεσιών' },
+    { value: 'category2_4', label: 'Γενικά έξοδα με δικαίωμα έκπτωσης ΦΠΑ' },
+    { value: 'category2_5', label: 'Γενικά έξοδα χωρίς δικαίωμα έκπτωσης ΦΠΑ' },
+    { value: 'category2_6', label: 'Αμοιβές και παροχές προσωπικού' },
+    { value: 'category2_7', label: 'Αγορές παγίων' },
+    { value: 'category2_8', label: 'Αποσβέσεις παγίων' },
+    { value: 'category2_9', label: 'Έξοδα για λογαριασμό τρίτων' },
+    { value: 'category2_10', label: 'Έξοδα προηγούμενων χρήσεων' },
+    { value: 'category2_11', label: 'Έξοδα επόμενων χρήσεων' },
+    { value: 'category2_12', label: 'Λοιπές εγγραφές τακτοποίησης' },
+    { value: 'category2_13', label: 'Αποθέματα έναρξης περιόδου' },
+    { value: 'category2_14', label: 'Αποθέματα λήξης περιόδου' },
+    { value: 'category2_95', label: 'Λοιπά πληροφοριακά στοιχεία εξόδων' },
+  ];
+  readonly expenseTypeOptions = [
+    { value: 'E3_102_001', label: 'Αγορές εμπορευμάτων — χονδρικές' },
+    { value: 'E3_102_002', label: 'Αγορές εμπορευμάτων — λιανικές' },
+    { value: 'E3_202_001', label: 'Αγορές πρώτων υλών — χονδρικές' },
+    { value: 'E3_202_002', label: 'Αγορές πρώτων υλών — λιανικές' },
+    { value: 'E3_585_001', label: 'Προμήθειες διαχείρισης' },
+    { value: 'E3_585_005', label: 'Έξοδα υποδοχής και φιλοξενίας' },
+    { value: 'E3_585_006', label: 'Έξοδα ταξιδιών' },
+    { value: 'E3_585_009', label: 'Λοιπές αμοιβές υπηρεσιών ημεδαπής' },
+    { value: 'E3_585_011', label: 'Ενέργεια' },
+    { value: 'E3_585_012', label: 'Ύδρευση' },
+    { value: 'E3_585_013', label: 'Τηλεπικοινωνίες' },
+    { value: 'E3_585_014', label: 'Ενοίκια' },
+    { value: 'E3_585_015', label: 'Διαφήμιση και προβολή' },
+    { value: 'E3_585_016', label: 'Λοιπά έξοδα' },
+    { value: 'E3_586', label: 'Χρεωστικοί τόκοι και συναφή έξοδα' },
+    { value: 'E3_587', label: 'Αποσβέσεις' },
+    { value: 'E3_588', label: 'Ασυνήθη έξοδα, ζημιές και πρόστιμα' },
+    { value: 'E3_598_002', label: 'Αγορές αγαθών που υπάγονται σε ΕΦΚ' },
+    { value: 'E3_882_001', label: 'Αγορές ενσώματων παγίων — χονδρικές' },
+    { value: 'E3_882_002', label: 'Αγορές ενσώματων παγίων — λιανικές' },
+  ];
   history: TransmissionAttempt[] = [];
   correctionChain: DocumentCorrectionChainItem[] = [];
+  readonly selectedExpenseIds = new Set<string>();
   message = '';
   errorMessage = '';
 
@@ -826,12 +940,102 @@ export class DocumentsListPageComponent {
     this.documentsApi.prepareExpenseMyData(document.id).subscribe({
       next: (response) => {
         this.expensePreview = response.preview;
+        this.expenseDraftDirty = false;
         this.xmlPreview = response.xml;
         this.message = `Expense XML prepared for ${document.series || '-'}/${document.documentNumber}.`;
         this.reload$.next();
       },
       error: (error: unknown) => this.showError(error),
     });
+  }
+
+  toggleExpenseSelection(document: DocumentListItem): void {
+    if (!this.canSelectExpense(document)) return;
+    if (this.selectedExpenseIds.has(document.id)) {
+      this.selectedExpenseIds.delete(document.id);
+    } else {
+      this.selectedExpenseIds.add(document.id);
+    }
+  }
+
+  approveSelectedExpenses(): void {
+    const documentIds = [...this.selectedExpenseIds];
+    if (documentIds.length === 0) return;
+    if (!confirm('Να εγκριθούν τα επιλεγμένα expense previews χωρίς αποστολή στην ΑΑΔΕ;')) {
+      return;
+    }
+    this.clearMessages();
+    this.documentsApi
+      .approveExpenseClassificationBatch(documentIds, 'APPROVE')
+      .subscribe({
+        next: (response) => {
+          this.message = 'Εγκρίθηκαν ' + response.count + ' χαρακτηρισμοί. Δεν έγινε αποστολή.';
+          this.selectedExpenseIds.clear();
+          this.reload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
+  }
+
+  sendSelectedExpenses(): void {
+    const documentIds = [...this.selectedExpenseIds];
+    if (documentIds.length === 0) return;
+    const confirmation = prompt(
+      'Πληκτρολογήστε SEND_TO_AADE για πραγματική αποστολή των εγκεκριμένων χαρακτηρισμών:',
+    );
+    if (confirmation !== 'SEND_TO_AADE') return;
+    this.clearMessages();
+    this.documentsApi.sendExpenseClassificationBatch(documentIds).subscribe({
+      next: (response) => {
+        this.message =
+          'Batch ' +
+          response.batchId +
+          ': στάλθηκαν ' +
+          response.sentCount +
+          ', απέτυχαν ' +
+          response.failedCount +
+          '.';
+        this.selectedExpenseIds.clear();
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  saveExpenseDraft(): void {
+    const preview = this.expensePreview;
+    if (!preview) return;
+    const invalidLine = preview.lines.find(
+      (line) =>
+        !line.expenseClassificationType.trim() ||
+        !line.expenseClassificationCategory.trim(),
+    );
+    if (invalidLine) {
+      this.errorMessage =
+        'Κάθε γραμμή χρειάζεται τύπο Ε3 και κατηγορία χαρακτηρισμού.';
+      return;
+    }
+    this.clearMessages();
+    this.documentsApi
+      .updateExpenseClassificationDraft(
+        preview.documentId,
+        preview.lines.map((line) => ({
+          lineNumber: line.lineNumber,
+          expenseClassificationType: line.expenseClassificationType.trim(),
+          expenseClassificationCategory: line.expenseClassificationCategory.trim(),
+          vatClassificationType: line.vatClassificationType,
+        })),
+      )
+      .subscribe({
+        next: (response) => {
+          this.expensePreview = response.preview;
+          this.xmlPreview = response.xml;
+          this.expenseDraftDirty = false;
+          this.message = 'Το draft αποθηκεύτηκε, ελέγχθηκε με AADE XSD και αναμένει έγκριση.';
+          this.reload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
   }
 
   approveExpense(document: DocumentListItem): void {
@@ -924,6 +1128,16 @@ export class DocumentsListPageComponent {
       this.supportsExpenseReceiver(document) &&
       !['SENT', 'CANCELLED'].includes(document.myDataStatus) &&
       Boolean(document.myDataMark)
+    );
+  }
+
+  canSelectExpense(document: DocumentListItem): boolean {
+    return (
+      document.documentType === 'PURCHASE_INVOICE' &&
+      document.classificationStatus === 'EXPENSE_PREPARED' &&
+      ['PENDING', 'APPROVED'].includes(
+        document.expenseClassificationApprovalStatus ?? '',
+      )
     );
   }
 

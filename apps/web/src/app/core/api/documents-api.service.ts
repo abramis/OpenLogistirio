@@ -267,6 +267,21 @@ export class DocumentsApiService {
     );
   }
 
+  updateExpenseClassificationDraft(
+    documentId: string,
+    lines: Array<{
+      lineNumber: number;
+      expenseClassificationType: string;
+      expenseClassificationCategory: string;
+      vatClassificationType?: string | null;
+    }>,
+  ): Observable<MyDataPrepareResponse> {
+    return this.http.patch<MyDataPrepareResponse>(
+      this.baseUrl + '/' + documentId + '/mydata/expense-classification-draft',
+      { lines },
+    );
+  }
+
   approveExpenseClassification(
     documentId: string,
     action: 'APPROVE' | 'REJECT',
@@ -287,6 +302,25 @@ export class DocumentsApiService {
       this.baseUrl + '/mydata/expense-approval/batch',
       { documentIds, action, notes },
     );
+  }
+
+  sendExpenseClassificationBatch(documentIds: string[]): Observable<{
+    batchId: string;
+    environment: string;
+    requestedCount: number;
+    sentCount: number;
+    failedCount: number;
+  }> {
+    return this.http.post<{
+      batchId: string;
+      environment: string;
+      requestedCount: number;
+      sentCount: number;
+      failedCount: number;
+    }>(this.baseUrl + '/mydata/send-expense-batch', {
+      documentIds,
+      confirmation: 'SEND_TO_AADE',
+    });
   }
 
   sendExpenseMockMyData(documentId: string): Observable<MyDataSendResponse> {

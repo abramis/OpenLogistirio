@@ -40,10 +40,13 @@ import {
   ApproveExpenseClassificationDto,
   BatchApproveExpenseClassificationDto,
   ExpenseClassificationApprovalActionDto,
+  SendExpenseClassificationBatchDto,
 } from './dto/approve-expense-classification.dto';
 import { MockMyDataProvider } from './mydata-mock.service';
 import { MyDataMappingService } from './mydata-mapping.service';
 import { MyDataProvider, MyDataTransmissionResponse } from './mydata-provider.interface';
+import { MyDataXmlValidationService } from './mydata-xml-validation.service';
+import { UpdateExpenseClassificationDraftDto } from './dto/update-expense-classification-draft.dto';
 
 interface MyDataSendOptions {
   force?: boolean;
@@ -72,6 +75,7 @@ export class MyDataService {
     private readonly mappingService: MyDataMappingService,
     private readonly mockProvider: MockMyDataProvider,
     private readonly aadeTestProvider: AadeMyDataTestProvider,
+    private readonly xmlValidationService: MyDataXmlValidationService,
   ) {}
 
   async prepare(tenant: TenantContext, documentId: string) {
@@ -153,6 +157,138 @@ export class MyDataService {
       preview: this.expenseClassificationPreview(document),
       attempt,
     };
+  }
+
+  async updateExpenseClassificationDraft(
+    tenant: TenantContext,
+    documentId: string,
+    dto: UpdateExpenseClassificationDraftDto,
+  ) {
+    const document = await this.getTenantDocument(tenant, documentId);
+    this.ensurePurchaseInvoice(document.documentType);
+    if (!document.myDataMark) {
+      throw new BadRequestException('Expense classification requires an incoming AADE MARK.');
+    }
+    if (
+      document.classificationStatus === 'EXPENSE_CLASSIFIED_AADE' ||
+      document.expenseClassificationApprovalStatus ===
+        ExpenseClassificationApprovalStatus.CONSUMED
+    ) {
+      throw new BadRequestException('A classification already sent to AADE cannot be edited.');
+    }
+
+    const draftByLine = new Map(dto.lines.map((line) => [line.lineNumber, line]));
+    if (draftByLine.size !== dto.lines.length) {
+      throw new BadRequestException('Each expense classification line number must be unique.');
+    }
+    if (
+      draftByLine.size !== document.lines.length ||
+      document.lines.some((line) => !draftByLine.has(line.lineNumber))
+    ) {
+      throw new BadRequestException(
+        'A classification type and category must be supplied for every document line.',
+      );
+    }
+
+    const candidateLines = document.lines.map((line) => {
+      const draft = draftByLine.get(line.lineNumber)!;
+      return {
+        ...line,
+        expenseClassificationType: draft.expenseClassificationType,
+        expenseClassificationCategory: draft.expenseClassificationCategory,
+        vatClassificationType: draft.vatClassificationType ?? null,
+      };
+    });
+    const xml = this.mappingService.mapPurchaseDocumentToExpenseClassificationXml({
+      ...document,
+      lines: candidateLines,
+    });
+    this.xmlValidationService.validateExpenseClassifications(xml);
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const line of candidateLines) {
+        await tx.documentLine.update({
+          where: {
+            documentId_lineNumber: {
+              documentId: document.id,
+              lineNumber: line.lineNumber,
+            },
+          },
+          data: {
+            expenseClassificationType: line.expenseClassificationType,
+            expenseClassificationCategory: line.expenseClassificationCategory,
+            vatClassificationType: line.vatClassificationType,
+          },
+        });
+      }
+      const updatedDocument = await tx.document.update({
+        where: { id: document.id },
+        data: {
+          myDataStatus: MyDataStatus.READY_TO_SEND,
+          myDataXmlPreview: xml,
+          classificationStatus: 'EXPENSE_PREPARED',
+          expenseClassificationApprovalStatus: ExpenseClassificationApprovalStatus.PENDING,
+          expenseClassificationApprovedById: null,
+          expenseClassificationApprovedAt: null,
+          expenseClassificationApprovalNotes: null,
+        },
+        include: {
+          clientCompany: true,
+          lines: { orderBy: { lineNumber: 'asc' } },
+          payments: { orderBy: { paymentNumber: 'asc' } },
+        },
+      });
+      const attempt = await tx.transmissionAttempt.create({
+        data: {
+          documentId: document.id,
+          provider: 'expense-classification-preview',
+          environment: 'preview',
+          correlationId: randomUUID(),
+          status: TransmissionStatus.PREPARED,
+          requestPayload: xml,
+          responsePayload: {
+            previewOnly: true,
+            flow: 'receiver-expense-classification',
+            edited: true,
+          },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          userId: tenant.userId,
+          action: AuditAction.UPDATE,
+          entityType: 'ExpenseClassificationDraft',
+          entityId: document.id,
+          oldValue: {
+            lines: document.lines.map((line) => ({
+              lineNumber: line.lineNumber,
+              expenseClassificationType: line.expenseClassificationType,
+              expenseClassificationCategory: line.expenseClassificationCategory,
+              vatClassificationType: line.vatClassificationType,
+            })),
+          },
+          newValue: {
+            lines: dto.lines.map((line) => ({
+              lineNumber: line.lineNumber,
+              expenseClassificationType: line.expenseClassificationType,
+              expenseClassificationCategory: line.expenseClassificationCategory,
+              vatClassificationType: line.vatClassificationType ?? null,
+            })),
+            approvalStatus: ExpenseClassificationApprovalStatus.PENDING,
+            updatedAt: now.toISOString(),
+          },
+        },
+      });
+      return {
+        document: updatedDocument,
+        status: MyDataStatus.READY_TO_SEND,
+        xml,
+        preview: this.expenseClassificationPreview(updatedDocument),
+        attempt,
+      };
+    });
   }
 
   approveExpenseClassification(
@@ -257,6 +393,72 @@ export class MyDataService {
     });
 
     return { count: updated.length, status: approvalStatus, documents: updated };
+  }
+
+  async sendExpenseClassificationBatch(
+    tenant: TenantContext,
+    dto: SendExpenseClassificationBatchDto,
+  ) {
+    const documentIds = [...new Set(dto.documentIds)];
+    const documents = await this.prisma.document.findMany({
+      where: {
+        id: { in: documentIds },
+        accountingOfficeId: tenant.accountingOfficeId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        documentNumber: true,
+        documentType: true,
+        classificationStatus: true,
+        expenseClassificationApprovalStatus: true,
+      },
+    });
+    if (documents.length !== documentIds.length) {
+      throw new NotFoundException('One or more batch expense documents were not found.');
+    }
+    for (const document of documents) {
+      this.ensurePurchaseInvoice(document.documentType);
+      if (
+        document.classificationStatus !== 'EXPENSE_PREPARED' ||
+        document.expenseClassificationApprovalStatus !==
+          ExpenseClassificationApprovalStatus.APPROVED
+      ) {
+        throw new BadRequestException(
+          'Document ' +
+            document.documentNumber +
+            ' requires a fresh approved expense preview before batch send.',
+        );
+      }
+    }
+
+    const batchId = randomUUID();
+    const results: Array<Record<string, unknown>> = [];
+    for (const documentId of documentIds) {
+      try {
+        const result = await this.sendExpenseTest(tenant, documentId);
+        results.push({
+          documentId,
+          status: 'SENT',
+          classificationMark: result.classificationMark,
+          environment: result.environment,
+        });
+      } catch (error) {
+        results.push({
+          documentId,
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : 'Expense classification send failed.',
+        });
+      }
+    }
+    return {
+      batchId,
+      environment: this.aadeTestProvider.configuredEnvironment(),
+      requestedCount: documentIds.length,
+      sentCount: results.filter((result) => result.status === 'SENT').length,
+      failedCount: results.filter((result) => result.status === 'FAILED').length,
+      results,
+    };
   }
 
   async sendExpenseMock(tenant: TenantContext, documentId: string) {
