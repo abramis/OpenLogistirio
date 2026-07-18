@@ -49,7 +49,7 @@ jobs:
       - run: npm run prisma:deploy:production --workspace=@open-logistirio/api
       - run: timeout --signal=TERM --kill-after=15s 300s npm run lint --workspace=@open-logistirio/api
       - run: timeout --signal=TERM --kill-after=15s 300s npm run lint --workspace=@open-logistirio/web
-      - run: timeout --signal=TERM --kill-after=15s 300s npm test --workspace=@open-logistirio/api -- --runInBand
+      - run: timeout --signal=TERM --kill-after=15s 300s ./scripts/api-test-check.sh
       - run: timeout --signal=TERM --kill-after=15s 180s npm test --workspace=@open-logistirio/web
       - run: timeout --signal=TERM --kill-after=15s 300s npm run build --workspace=@open-logistirio/api
       - run: timeout --signal=TERM --kill-after=15s 300s npm run build --workspace=@open-logistirio/web

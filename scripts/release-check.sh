@@ -23,7 +23,7 @@ fi
 
 run_timed "$command_timeout" npm run lint --workspace=@open-logistirio/api
 run_timed "$command_timeout" npm run lint --workspace=@open-logistirio/web
-run_timed "$command_timeout" npm test --workspace=@open-logistirio/api -- --runInBand
+run_timed "$command_timeout" ./scripts/api-test-check.sh
 
 if [[ -z ${CHROME_BIN:-} ]]; then
   # Calling the Snap wrapper directly can leave Karma waiting after all tests pass.
