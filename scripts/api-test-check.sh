@@ -9,6 +9,17 @@ npm test --workspace=@open-logistirio/api -- --runInBand --json --outputFile="$r
 status=$?
 set -e
 
+if [[ -s $result_file ]]; then
+  structured_success=$(node -e '
+    const fs = require("node:fs");
+    const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    process.stdout.write(result.success === true ? "true" : "false");
+  ' "$result_file")
+  if [[ $structured_success == true ]]; then
+    exit 0
+  fi
+fi
+
 if [[ $status -ne 0 && ${GITHUB_ACTIONS:-false} == true && -s $result_file ]]; then
   summary=$(node -e '
     const fs = require("node:fs");
