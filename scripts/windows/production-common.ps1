@@ -33,14 +33,42 @@ function Write-OpenLogistirioSuccess {
   Write-Host $Message -ForegroundColor Green
 }
 
+function Invoke-OpenLogistirioDockerProbe {
+  param([Parameter(Mandatory = $true)][string[]]$DockerArguments)
+
+  # Windows PowerShell turns native stderr into PowerShell error records. With
+  # ErrorActionPreference=Stop, an expected non-zero probe (for example a
+  # volume that does not exist on a first install) would abort the installer
+  # before we can inspect LASTEXITCODE.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $output = @(& docker @DockerArguments 2>$null)
+    $exitCode = $LASTEXITCODE
+  }
+  catch {
+    $output = @()
+    $exitCode = 1
+  }
+  finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  return [PSCustomObject]@{
+    ExitCode = $exitCode
+    Output = $output
+  }
+}
+
 function Test-DockerDaemon {
-  $output = & docker info --format "{{.OSType}}" 2>$null
-  $exitCode = $LASTEXITCODE
-  if ($exitCode -ne 0) {
+  $probe = Invoke-OpenLogistirioDockerProbe -DockerArguments @(
+    "info", "--format", "{{.OSType}}"
+  )
+  if ($probe.ExitCode -ne 0) {
     return $null
   }
 
-  return ([string]$output).Trim().ToLowerInvariant()
+  return ([string]($probe.Output -join "`n")).Trim().ToLowerInvariant()
 }
 
 function Start-DockerDesktopIfNeeded {
@@ -82,16 +110,20 @@ function Assert-OpenLogistirioPrerequisites {
     throw "Το Docker Desktop εκτελεί Windows containers. Επιλέξτε 'Switch to Linux containers' από το Docker Desktop και δοκιμάστε ξανά."
   }
 
-  $null = & docker compose version 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  $composeProbe = Invoke-OpenLogistirioDockerProbe -DockerArguments @(
+    "compose", "version"
+  )
+  if ($composeProbe.ExitCode -ne 0) {
     throw "Δεν βρέθηκε το Docker Compose. Ενημερώστε το Docker Desktop και δοκιμάστε ξανά."
   }
 }
 
 function Test-OpenLogistirioDataVolume {
   $volumeName = $script:OpenLogistirioProjectName + "_mysql-data"
-  $null = & docker volume inspect $volumeName 2>$null
-  return $LASTEXITCODE -eq 0
+  $probe = Invoke-OpenLogistirioDockerProbe -DockerArguments @(
+    "volume", "inspect", $volumeName
+  )
+  return $probe.ExitCode -eq 0
 }
 
 function Invoke-OpenLogistirioCompose {

@@ -8,6 +8,7 @@ $testLocalAppData = Join-Path $env:TEMP ("open-logistirio-installer-test-" + [Gu
 $originalLocalAppData = $env:LOCALAPPDATA
 $originalPath = $env:PATH
 $originalDockerLog = $env:OPENLOG_DOCKER_LOG
+$originalDockerVolumeExists = $env:OPENLOG_DOCKER_VOLUME_EXISTS
 $serverJob = $null
 
 function Invoke-InstallerCheck {
@@ -159,6 +160,11 @@ try {
     '  echo Docker Compose version v2.test',
     '  exit /b 0',
     ')',
+    'if /I "%1"=="volume" if /I "%2"=="inspect" (',
+    '  if "%OPENLOG_DOCKER_VOLUME_EXISTS%"=="1" exit /b 0',
+    '  1>&2 echo Error response from daemon: get %3: no such volume',
+    '  exit /b 1',
+    ')',
     'exit /b 0'
   )
   [System.IO.File]::WriteAllLines(
@@ -169,6 +175,16 @@ try {
   $env:OPENLOG_DOCKER_LOG = $dockerLog
   $env:PATH = $fakeDockerDirectory + ";" + $originalPath
 
+  . (Join-Path $PSScriptRoot "production-common.ps1")
+  $env:OPENLOG_DOCKER_VOLUME_EXISTS = ""
+  if (Test-OpenLogistirioDataVolume) {
+    throw "The Windows installer treated a missing first-install volume as existing."
+  }
+  $env:OPENLOG_DOCKER_VOLUME_EXISTS = "1"
+  if (-not (Test-OpenLogistirioDataVolume)) {
+    throw "The Windows installer did not detect an existing data volume."
+  }
+
   $webPort = [int]$updatedValues["WEB_PORT"]
   $serverJob = Start-Job -ArgumentList $webPort -ScriptBlock {
     param($Port)
@@ -176,6 +192,10 @@ try {
     $listener.Start()
     try {
       while ($true) {
+        if (-not $listener.Pending()) {
+          Start-Sleep -Milliseconds 50
+          continue
+        }
         $client = $listener.AcceptTcpClient()
         try {
           $stream = $client.GetStream()
@@ -238,5 +258,6 @@ finally {
   $env:LOCALAPPDATA = $originalLocalAppData
   $env:PATH = $originalPath
   $env:OPENLOG_DOCKER_LOG = $originalDockerLog
+  $env:OPENLOG_DOCKER_VOLUME_EXISTS = $originalDockerVolumeExists
   Remove-Item -LiteralPath $testLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
 }

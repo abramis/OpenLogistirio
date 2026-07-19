@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0-rc.7 - 2026-07-19
+
+- Fixed the first Windows installation incorrectly aborting when its Docker data volume did not
+  exist yet.
+- Added a Windows PowerShell regression test for both missing and existing Docker volumes and made
+  the installer test server shut down reliably.
+
 ## 0.2.0-rc.6 - 2026-07-19
 
 - Added a double-click Windows production installer with generated infrastructure secrets,
