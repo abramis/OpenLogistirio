@@ -8,7 +8,11 @@
 - Καθαρό Git worktree, ενημερωμένο changelog και version που συμφωνεί με το tag.
 - `npm ci` και `npm run release:check` επιτυχή στο ακριβές release commit.
 - Production Docker images χτίζονται από το ίδιο commit.
-- Νέα εγκατάσταση: migrations, production bootstrap, login και smoke check επιτυχή.
+- Το Windows installer περνά parsing και πραγματική δημιουργία/επαναχρησιμοποίηση production
+  ρυθμίσεων με Windows PowerShell 5.1, χωρίς Node.js, Git, MySQL, Redis ή bash.
+- Το ακριβές production Compose περνά σε κενά volumes: migrations, first-run setup, login, κενή
+  βάση χωρίς demo data, backup/download/restore, smoke check, restart από άλλο φάκελο και διατήρηση
+  δεδομένων.
 - Upgrade αντιγράφου πραγματικής βάσης και isolated restore drill επιτυχή.
 - Κανένα secret, πραγματικό ΑΦΜ, subscription key ή backup μέσα στο Git/artifact.
 - Όλα τα AADE production-write flags παραμένουν `false`.
@@ -17,6 +21,9 @@
 ## Υποχρεωτικά πριν από stable production release
 
 - Rotation κάθε credential που έχει εμφανιστεί σε συνομιλία, log ή μη ασφαλές αρχείο.
+- Το Windows ZIP ελέγχεται από καθαρό, υποστηριζόμενο Windows PC με Docker Desktop: αποσυμπίεση,
+  διπλό κλικ installer, first-run browser form, login, restart και διατήρηση δεδομένων. Η ύπαρξη
+  script ή ο στατικός έλεγχος δεν θεωρείται πλήρες Windows acceptance test.
 - Έλεγχος από Έλληνα λογιστή για αποσβέσεις, tax calendar, year-end close και workpapers.
 - UAT από τουλάχιστον ένα γραφείο με ανωνυμοποιημένο αντίγραφο δεδομένων και καταγεγραμμένα
   αποτελέσματα για αγορές, πωλήσεις, πιστωτικά, ακυρώσεις, ΦΠΑ, imports και period close.

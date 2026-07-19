@@ -16,6 +16,11 @@ export const routes: Routes = [
       import('./features/login/login-page.component').then((m) => m.LoginPageComponent),
   },
   {
+    path: 'setup',
+    loadComponent: () =>
+      import('./features/setup/setup-page.component').then((m) => m.SetupPageComponent),
+  },
+  {
     path: 'companies',
     loadComponent: () =>
       import('./features/companies/companies-list-page.component').then(

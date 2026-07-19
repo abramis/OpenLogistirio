@@ -10,7 +10,17 @@ permissions:
   packages: write
 
 jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the Windows installer with Windows PowerShell 5.1
+        shell: powershell
+        run: .\scripts\windows\test-production-installer.ps1
+
   release:
+    needs: windows-installer
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -65,17 +75,28 @@ jobs:
         run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and publish API image
+      - name: Build API image
         run: |
           docker build -f apps/api/Dockerfile.production \
             --build-arg APP_VERSION="$RELEASE_VERSION" \
             --build-arg GIT_SHA="$GITHUB_SHA" \
             -t "$IMAGE_BASE-api:$RELEASE_VERSION" .
-          docker push "$IMAGE_BASE-api:$RELEASE_VERSION"
-      - name: Build and publish web image
+      - name: Build web image
         run: |
           docker build -f apps/web/Dockerfile.production \
             -t "$IMAGE_BASE-web:$RELEASE_VERSION" .
+      - name: Verify the fresh production installation
+        run: |
+          PRODUCTION_CHECK_VERSION="$RELEASE_VERSION" \
+          PRODUCTION_CHECK_GIT_SHA="$GITHUB_SHA" \
+          PRODUCTION_CHECK_API_IMAGE="$IMAGE_BASE-api" \
+          PRODUCTION_CHECK_WEB_IMAGE="$IMAGE_BASE-web" \
+          PRODUCTION_CHECK_PROJECT=open-logistirio-release-smoke \
+          PRODUCTION_CHECK_BUILD_IMAGES=false \
+            ./scripts/production-compose-check.sh
+      - name: Publish release images
+        run: |
+          docker push "$IMAGE_BASE-api:$RELEASE_VERSION"
           docker push "$IMAGE_BASE-web:$RELEASE_VERSION"
       - name: Publish stable aliases
         if: ${{ !contains(env.RELEASE_VERSION, '-') }}
@@ -84,6 +105,19 @@ jobs:
           docker tag "$IMAGE_BASE-web:$RELEASE_VERSION" "$IMAGE_BASE-web:latest"
           docker push "$IMAGE_BASE-api:latest"
           docker push "$IMAGE_BASE-web:latest"
+      - name: Package the Windows installation
+        run: |
+          archive="OpenLogistirio-Windows-${RELEASE_VERSION}.zip"
+          git archive \
+            --format=zip \
+            --prefix="OpenLogistirio-${RELEASE_VERSION}/" \
+            --output="$archive" \
+            HEAD
+          unzip -Z1 "$archive" | grep -Fx "OpenLogistirio-${RELEASE_VERSION}/INSTALL-WINDOWS.cmd"
+          unzip -Z1 "$archive" | grep -Fx "OpenLogistirio-${RELEASE_VERSION}/START-WINDOWS.cmd"
+          unzip -Z1 "$archive" | grep -Fx "OpenLogistirio-${RELEASE_VERSION}/STOP-WINDOWS.cmd"
+          sha256sum "$archive" > "$archive.sha256"
+          echo "WINDOWS_ARCHIVE=$archive" >> "$GITHUB_ENV"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,4 +130,6 @@ jobs:
             --verify-tag \
             --generate-notes \
             --title "Open Logistirio $RELEASE_VERSION" \
+            "$WINDOWS_ARCHIVE#Windows installation package" \
+            "$WINDOWS_ARCHIVE.sha256#SHA-256 checksum" \
             "${prerelease[@]}"

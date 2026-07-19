@@ -319,23 +319,10 @@ interface DatabaseConnection {
 
 async function runDump(database: DatabaseConnection, filePath: string): Promise<void> {
   const output = createWriteStream(filePath, { flags: 'wx' });
-  const args = [
-    '--host',
-    database.host,
-    '--port',
-    database.port,
-    '--user',
-    database.user,
-    '--single-transaction',
-    '--quick',
-    '--routines',
-    '--triggers',
-    '--events',
-    database.database,
-  ];
+  const args = buildMySqlDumpArgs(database);
 
   try {
-    await runProcess('mysqldump', args, {
+    await runProcess('mariadb-dump', args, {
       env: { MYSQL_PWD: database.password },
       stdout: output,
     });
@@ -344,6 +331,23 @@ async function runDump(database: DatabaseConnection, filePath: string): Promise<
     output.destroy();
     throw error;
   }
+}
+
+export function buildMySqlDumpArgs(database: DatabaseConnection): string[] {
+  return [
+    '--host',
+    database.host,
+    '--port',
+    database.port,
+    '--user',
+    database.user,
+    '--skip-ssl-verify-server-cert',
+    '--single-transaction',
+    '--quick',
+    '--no-tablespaces',
+    '--triggers',
+    database.database,
+  ];
 }
 
 async function runRestore(database: DatabaseConnection, filePath: string): Promise<void> {
@@ -355,10 +359,11 @@ async function runRestore(database: DatabaseConnection, filePath: string): Promi
     database.port,
     '--user',
     database.user,
+    '--skip-ssl-verify-server-cert',
     database.database,
   ];
 
-  await runProcess('mysql', args, {
+  await runProcess('mariadb', args, {
     env: { MYSQL_PWD: database.password },
     stdin: input,
   });

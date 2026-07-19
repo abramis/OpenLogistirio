@@ -1,8 +1,10 @@
 import { NgIf } from '@angular/common';
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
+import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
+import { readSetupToken } from '../setup/setup-token';
 
 @Component({
   selector: 'ol-login-page',
@@ -52,7 +54,12 @@ import { AuthService } from '../../core/auth/auth.service';
             <span class="material-symbols-outlined">login</span>
             {{ busy ? 'Σύνδεση...' : 'Σύνδεση' }}
           </button>
-          <button class="link-button" type="button" (click)="switchMode('reset-request')">
+          <button
+            *ngIf="passwordResetAvailable"
+            class="link-button"
+            type="button"
+            (click)="switchMode('reset-request')"
+          >
             Ξέχασα τον κωδικό
           </button>
         </form>
@@ -242,19 +249,40 @@ import { AuthService } from '../../core/auth/auth.service';
     `,
   ],
 })
-export class LoginPageComponent {
+export class LoginPageComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
-  email = 'admin@example.gr';
-  password = 'ChangeMe123!';
-  resetEmail = 'admin@example.gr';
+  email = environment.production ? '' : 'admin@example.gr';
+  password = environment.production ? '' : 'ChangeMe123!';
+  resetEmail = environment.production ? '' : 'admin@example.gr';
   resetToken = '';
   newPassword = '';
+  readonly passwordResetAvailable = !environment.production;
   mode: 'login' | 'reset-request' | 'reset-confirm' = 'login';
   busy = false;
   message = '';
   errorMessage = '';
+
+  ngOnInit(): void {
+    const setupToken = readSetupToken(this.route.snapshot.fragment);
+    if (!setupToken) {
+      return;
+    }
+
+    this.authService.getInitialSetupStatus().subscribe({
+      next: (status) => {
+        if (status.required && status.available) {
+          void this.router.navigate(['/setup'], {
+            fragment: `token=${encodeURIComponent(setupToken)}`,
+            replaceUrl: true,
+          });
+        }
+      },
+      error: () => undefined,
+    });
+  }
 
   switchMode(mode: 'login' | 'reset-request' | 'reset-confirm'): void {
     this.mode = mode;

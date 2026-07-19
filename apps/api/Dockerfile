@@ -2,7 +2,7 @@ FROM node:22.22.3-alpine
 
 WORKDIR /workspace
 
-RUN apk add --no-cache mysql-client libxml2-utils
+RUN apk add --no-cache mysql-client mariadb-connector-c libxml2-utils
 
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json apps/api/package.json

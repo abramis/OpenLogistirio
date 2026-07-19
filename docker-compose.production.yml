@@ -29,10 +29,13 @@ services:
       retries: 12
 
   migrate:
+    image: '${OPEN_LOGISTIRIO_API_IMAGE:-ghcr.io/abramis/openlogistirio-api}:${APP_VERSION:?Set APP_VERSION}'
     build:
       context: .
       dockerfile: apps/api/Dockerfile.production
-      target: build
+      args:
+        APP_VERSION: ${APP_VERSION:-development}
+        GIT_SHA: ${GIT_SHA:-unknown}
     env_file: ${PRODUCTION_ENV_FILE:-.env.production}
     environment:
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
@@ -65,6 +68,7 @@ services:
     restart: 'no'
 
   api:
+    image: '${OPEN_LOGISTIRIO_API_IMAGE:-ghcr.io/abramis/openlogistirio-api}:${APP_VERSION:?Set APP_VERSION}'
     build:
       context: .
       dockerfile: apps/api/Dockerfile.production
@@ -106,8 +110,8 @@ services:
     volumes:
       - backup-data:/backups
     depends_on:
-      mysql:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     command:
       - /bin/sh
       - -ec
@@ -119,7 +123,7 @@ services:
           trap 'rm -f "$$partial"' EXIT INT TERM
           MYSQL_PWD="$$MYSQL_PASSWORD" mysqldump \
             --host="$$MYSQL_HOST" --user="$$MYSQL_USER" \
-            --single-transaction --quick --routines --triggers --events \
+            --single-transaction --quick --no-tablespaces --triggers \
             "$$MYSQL_DATABASE" > "$$partial"
           test -s "$$partial"
           mv "$$partial" "$$target"
@@ -142,6 +146,47 @@ services:
       timeout: 30s
       retries: 3
       start_period: 2m
+
+  backup-before-update:
+    profiles: ['maintenance']
+    image: mysql:8.4
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - backup-data:/backups
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        attempts=0
+        until MYSQL_PWD="$$MYSQL_PASSWORD" mysqladmin ping \
+          --host="$$MYSQL_HOST" --user="$$MYSQL_USER" --silent; do
+          attempts=$$((attempts + 1))
+          test "$$attempts" -lt 60
+          sleep 2
+        done
+        timestamp=$$(date -u +%Y%m%d-%H%M%S)
+        target=/backups/open-logistirio-$${timestamp}.sql
+        while test -e "$$target"; do
+          sleep 1
+          timestamp=$$(date -u +%Y%m%d-%H%M%S)
+          target=/backups/open-logistirio-$${timestamp}.sql
+        done
+        partial=$${target}.partial
+        trap 'rm -f "$$partial"' EXIT INT TERM
+        MYSQL_PWD="$$MYSQL_PASSWORD" mysqldump \
+          --host="$$MYSQL_HOST" --user="$$MYSQL_USER" \
+          --single-transaction --quick --no-tablespaces --triggers \
+          "$$MYSQL_DATABASE" > "$$partial"
+        test -s "$$partial"
+        mv "$$partial" "$$target"
+        trap - EXIT INT TERM
+        cd /backups
+        sha256sum "$$(basename "$$target")" > "$$(basename "$$target").sha256"
+        echo "Pre-update backup created: $$(basename "$$target")"
 
   files-backup:
     image: alpine:3.20
@@ -273,12 +318,13 @@ services:
         echo "Supporting-documents archive drill passed for $$(basename "$$latest")"
 
   web:
+    image: '${OPEN_LOGISTIRIO_WEB_IMAGE:-ghcr.io/abramis/openlogistirio-web}:${APP_VERSION:?Set APP_VERSION}'
     build:
       context: .
       dockerfile: apps/web/Dockerfile.production
     restart: unless-stopped
     ports:
-      - '${WEB_PORT:-8080}:80'
+      - '${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8088}:80'
     depends_on:
       api:
         condition: service_healthy

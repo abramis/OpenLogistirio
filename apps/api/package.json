@@ -1,6 +1,6 @@
 {
   "name": "@open-logistirio/api",
-  "version": "0.2.0-rc.5",
+  "version": "0.2.0-rc.6",
   "private": true,
   "description": "Open Logistirio API",
   "license": "AGPL-3.0-or-later",
@@ -39,6 +39,7 @@
     "ioredis": "5.11.1",
     "passport": "0.7.0",
     "passport-jwt": "4.0.1",
+    "prisma": "^6.19.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "swagger-ui-express": "5.0.1",
@@ -56,7 +57,6 @@
     "@types/supertest": "7.2.0",
     "dotenv-cli": "^11.0.0",
     "jest": "30.4.2",
-    "prisma": "^6.19.0",
     "supertest": "7.2.2",
     "ts-jest": "29.4.11",
     "ts-node": "10.9.2",

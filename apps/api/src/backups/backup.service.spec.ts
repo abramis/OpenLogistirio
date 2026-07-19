@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/tenant/tenant-context';
-import { BackupService } from './backup.service';
+import { BackupService, buildMySqlDumpArgs } from './backup.service';
 
 describe('BackupService', () => {
   let backupDir: string;
@@ -104,5 +104,22 @@ describe('BackupService', () => {
     const download = await service.resolveDownload(fileName);
     expect(download.checksumSha256).toBe(checksum);
     download.stream.destroy();
+  });
+});
+
+describe('buildMySqlDumpArgs', () => {
+  it('avoids global MySQL privileges that the application user does not have', () => {
+    const args = buildMySqlDumpArgs({
+      host: 'mysql',
+      port: '3306',
+      user: 'openlog',
+      password: 'secret',
+      database: 'open_logistirio',
+    });
+
+    expect(args).toContain('--no-tablespaces');
+    expect(args).toContain('--skip-ssl-verify-server-cert');
+    expect(args).not.toContain('--routines');
+    expect(args).not.toContain('--events');
   });
 });

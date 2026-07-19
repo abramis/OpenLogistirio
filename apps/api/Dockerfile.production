@@ -35,13 +35,16 @@ ENV NODE_ENV=production
 ENV APP_VERSION=$APP_VERSION
 ENV GIT_SHA=$GIT_SHA
 
-RUN apk add --no-cache mysql-client libxml2-utils \
+RUN apk add --no-cache mysql-client mariadb-connector-c libxml2-utils \
   && addgroup -S openlog \
   && adduser -S openlog -G openlog
 
 COPY --from=production-dependencies /workspace/node_modules ./node_modules
-COPY --from=production-dependencies /workspace/apps/api/node_modules/@prisma/client ./apps/api/node_modules/@prisma/client
+COPY --from=production-dependencies /workspace/apps/api/node_modules ./apps/api/node_modules
 COPY --from=production-dependencies /workspace/apps/api/node_modules/.prisma ./apps/api/node_modules/.prisma
+COPY --from=build /workspace/apps/api/node_modules/@prisma/engines ./apps/api/node_modules/@prisma/engines
+COPY --from=build /workspace/apps/api/node_modules/prisma ./apps/api/node_modules/prisma
+COPY package.json ./package.json
 COPY --from=build /workspace/apps/api/dist ./apps/api/dist
 COPY --from=build /workspace/apps/api/prisma ./apps/api/prisma
 COPY --from=build /workspace/apps/api/package.json ./apps/api/package.json

@@ -1,5 +1,7 @@
 $ErrorActionPreference = "Stop"
 
+Write-Host "DEVELOPMENT ONLY - starts source-mounted services and loads demo data." -ForegroundColor Yellow
+
 Set-Location (Resolve-Path "$PSScriptRoot\..\..")
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {

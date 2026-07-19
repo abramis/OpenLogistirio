@@ -3,8 +3,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BehaviorSubject, switchMap } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { OfficeUser, UsersApiService } from '../../core/api/users-api.service';
 import { UserRole } from '../../core/auth/user-roles';
+
+const DEVELOPMENT_PASSWORD_DEFAULT = environment.production ? '' : 'ChangeMe123!';
 
 @Component({
   selector: 'ol-users-page',
@@ -203,7 +206,7 @@ export class UsersPageComponent {
   newFullName = '';
   newEmail = '';
   newRole: UserRole = 'ACCOUNTANT';
-  newPassword = 'ChangeMe123!';
+  newPassword = DEVELOPMENT_PASSWORD_DEFAULT;
   busy = false;
   message = '';
   errorMessage = '';
@@ -228,7 +231,7 @@ export class UsersPageComponent {
           this.newFullName = '';
           this.newEmail = '';
           this.newRole = 'ACCOUNTANT';
-          this.newPassword = 'ChangeMe123!';
+          this.newPassword = DEVELOPMENT_PASSWORD_DEFAULT;
           this.message = 'Ο χρήστης δημιουργήθηκε.';
           this.reload();
         },

@@ -46,6 +46,7 @@ function isAuthRequest(request: HttpRequest<unknown>): boolean {
     request.url.includes('/auth/login') ||
     request.url.includes('/auth/refresh') ||
     request.url.includes('/auth/logout') ||
-    request.url.includes('/auth/password-reset/')
+    request.url.includes('/auth/password-reset/') ||
+    request.url.includes('/setup')
   );
 }

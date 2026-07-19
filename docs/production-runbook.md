@@ -1,7 +1,11 @@
-# Production runbook
+# Linux production server runbook
 
 Το runbook αφορά εγκατάσταση του Open Logistirio σε έναν πραγματικό server λογιστικού γραφείου.
 Δεν ενεργοποιεί production εγγραφές προς ΑΑΔΕ.
+
+> Το runbook απευθύνεται σε τεχνικό διαχειριστή Linux server. Δεν είναι οδηγός εγκατάστασης σε
+> Windows PC λογιστικού γραφείου. Για Windows ακολουθήστε μόνο την
+> [προτεινόμενη διαδρομή του README](../README.md#1-κανονική-χρήση-σε-windows-για-λογιστικό-γραφείο).
 
 ## 1. Προϋποθέσεις server
 
@@ -69,7 +73,9 @@ bundle δεν δείχνει στο localhost. Πριν από δημόσιο pr
 - `open-logistirio-files-YYYYMMDD-HHMMSS.tar.gz`: supporting-document uploads.
 
 Κάθε artifact γράφεται πρώτα ως `.partial`, δημοσιεύεται μόνο αφού ολοκληρωθεί και συνοδεύεται από
-`.sha256`. Η προεπιλεγμένη συχνότητα είναι ημερήσια και η τοπική διατήρηση 30 ημέρες.
+`.sha256`. Η συχνότητα ορίζεται από `BACKUP_INTERVAL_SECONDS`, η τοπική διατήρηση από
+`BACKUP_RETENTION_DAYS` και το επιτρεπόμενο μέγιστο age από `BACKUP_MAX_AGE_HOURS`. Οι
+προεπιλογές είναι ημερήσιο backup, διατήρηση 30 ημερών και μέγιστο age 36 ωρών.
 
 Το named volume `backup-data` δεν αποτελεί off-site backup. Αν χαθεί ο server/δίσκος, χάνεται και
 αυτό. Αντιγράφουμε καθημερινά τα ολοκληρωμένα artifacts και τα `.sha256` σε ανεξάρτητο,

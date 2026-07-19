@@ -56,3 +56,24 @@ jobs:
       - run: timeout --signal=TERM --kill-after=15s 300s npm run build --workspace=@open-logistirio/web
       - name: Reject development API URL in production bundle
         run: '! grep -R -F -q "http://localhost:3000/api" apps/web/dist/web/browser'
+
+  production-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - name: Build and verify a fresh production installation
+        run: ./scripts/production-compose-check.sh
+
+  windows-installers:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the Windows installer with Windows PowerShell 5.1
+        shell: powershell
+        run: .\scripts\windows\test-production-installer.ps1

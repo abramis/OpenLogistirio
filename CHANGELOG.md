@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0-rc.6 - 2026-07-19
+
+- Added a double-click Windows production installer with generated infrastructure secrets,
+  loopback-only access, stable Docker volumes and automatic browser launch.
+- Added a one-time browser form for the accounting-office details and first administrator; fresh
+  production installations contain no demo users, clients or documents.
+- Reorganized the documentation so normal Windows use is first and Linux/development workflows
+  are clearly separated.
+- Added clean production installation, backup/restore, restart and cross-directory persistence
+  checks before publishing images, plus a downloadable Windows release ZIP.
+- Fixed MySQL 8.4 backup and restore compatibility in the non-root API container and added a
+  pre-update database backup path.
+
 ## 0.2.0-rc.5 - 2026-07-18
 
 - Made clean CI/release installs generate the Prisma client explicitly before migrations and tests.

@@ -8,7 +8,7 @@ import { NgIf } from '@angular/common';
   standalone: true,
   imports: [NgIf, RouterOutlet, ShellComponent],
   template: `
-    <ol-shell *ngIf="!isLoginRoute(); else bareRoute">
+    <ol-shell *ngIf="!isBareRoute(); else bareRoute">
       <router-outlet />
     </ol-shell>
     <ng-template #bareRoute>
@@ -19,7 +19,7 @@ import { NgIf } from '@angular/common';
 export class AppComponent {
   private readonly router = inject(Router);
 
-  isLoginRoute(): boolean {
-    return this.router.url.startsWith('/login');
+  isBareRoute(): boolean {
+    return this.router.url.startsWith('/login') || this.router.url.startsWith('/setup');
   }
 }

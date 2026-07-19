@@ -22,6 +22,7 @@ import { UsersModule } from './users/users.module';
 import { PeriodClosesModule } from './period-closes/period-closes.module';
 import { SupportingDocumentsModule } from './supporting-documents/supporting-documents.module';
 import { DigitalMovementModule } from './digital-movement/digital-movement.module';
+import { SetupModule } from './setup/setup.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { DigitalMovementModule } from './digital-movement/digital-movement.modul
     PeriodClosesModule,
     SupportingDocumentsModule,
     DigitalMovementModule,
+    SetupModule,
   ],
 })
 export class AppModule {}

@@ -27,6 +27,23 @@ export interface PasswordResetRequestResult {
   resetToken?: string;
 }
 
+export interface InitialSetupStatus {
+  required: boolean;
+  available: boolean;
+}
+
+export interface InitialSetupRequest {
+  setupToken: string;
+  officeName: string;
+  officeVatNumber?: string;
+  officeEmail?: string;
+  officePhone?: string;
+  officeAddress?: string;
+  adminFullName: string;
+  adminEmail: string;
+  adminPassword: string;
+}
+
 const ACCESS_TOKEN_KEY = 'open-logistirio.accessToken';
 const REFRESH_TOKEN_KEY = 'open-logistirio.refreshToken';
 const USER_KEY = 'open-logistirio.user';
@@ -43,6 +60,16 @@ export class AuthService {
   login(email: string, password: string) {
     return this.http
       .post<AuthSession>(`${environment.apiBaseUrl}/auth/login`, { email, password })
+      .pipe(tap((session) => this.storeSession(session)));
+  }
+
+  getInitialSetupStatus(): Observable<InitialSetupStatus> {
+    return this.http.get<InitialSetupStatus>(`${environment.apiBaseUrl}/setup/status`);
+  }
+
+  completeInitialSetup(request: InitialSetupRequest): Observable<AuthSession> {
+    return this.http
+      .post<AuthSession>(`${environment.apiBaseUrl}/setup`, request)
       .pipe(tap((session) => this.storeSession(session)));
   }
 
