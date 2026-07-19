@@ -82,6 +82,13 @@ if [[ $build_images == true ]]; then
     .
 fi
 
+# A clean CI runner has no Compose runtime images cached. Pull only the
+# third-party images here; the application images above must remain the exact
+# locally built release candidates exercised by this check.
+docker pull mysql:8.4
+docker pull redis:7.4-alpine
+docker pull alpine:3.20
+
 docker compose --env-file "$env_file" -f "$compose_file" -p "$project" config --quiet
 docker compose --env-file "$env_file" -f "$compose_file" -p "$project" \
   up --detach --no-build --pull never
