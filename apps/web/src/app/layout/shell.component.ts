@@ -1,6 +1,7 @@
 import { AsyncPipe, NgIf } from '@angular/common';
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { EMPTY } from 'rxjs';
 import { AuthService } from '../core/auth/auth.service';
 import { MyDataApiService } from '../core/api/mydata-api.service';
 import { SystemApiService } from '../core/api/system-api.service';
@@ -419,7 +420,7 @@ export class ShellComponent {
   readonly auth = inject(AuthService);
   private readonly myDataApi = inject(MyDataApiService);
   private readonly systemApi = inject(SystemApiService);
-  readonly myDataEnvironment$ = this.myDataApi.environment();
+  readonly myDataEnvironment$ = this.auth.isAuthenticated() ? this.myDataApi.environment() : EMPTY;
   readonly systemHealth$ = this.systemApi.health();
 
   canViewAudit(): boolean {

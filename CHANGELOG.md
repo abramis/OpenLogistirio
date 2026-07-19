@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-rc.8 - 2026-07-19
+
+- Fixed the initial-setup page remaining on its loading spinner after the public status request
+  completed under Angular's zoneless renderer.
+- Prevented the authenticated application shell from being created during first-run routing or
+  requesting protected myDATA metadata before a user session exists.
+- Added browser-level and zoneless regression coverage for the Windows first-run setup flow.
+
 ## 0.2.0-rc.7 - 2026-07-19
 
 - Fixed the first Windows installation incorrectly aborting when its Docker data volume did not

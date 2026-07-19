@@ -1,7 +1,8 @@
 import { NgForm } from '@angular/forms';
+import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { AuthService, AuthSession } from '../../core/auth/auth.service';
 import { SetupPageComponent } from './setup-page.component';
 import { readSetupToken } from './setup-token';
@@ -27,6 +28,7 @@ describe('SetupPageComponent', () => {
         { provide: AuthService, useValue: authService },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: route },
+        provideZonelessChangeDetection(),
       ],
     }).compileComponents();
   });
@@ -39,6 +41,21 @@ describe('SetupPageComponent', () => {
 
     expect(router.navigate).toHaveBeenCalledWith(['/login'], { replaceUrl: true });
     expect(authService.completeInitialSetup).not.toHaveBeenCalled();
+  });
+
+  it('renders the form after an asynchronous setup status response in zoneless mode', async () => {
+    const status = new Subject<{ required: boolean; available: boolean }>();
+    authService.getInitialSetupStatus.and.returnValue(status);
+    const fixture = TestBed.createComponent(SetupPageComponent);
+    fixture.detectChanges();
+
+    status.next({ required: true, available: true });
+    status.complete();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.checking).toBeFalse();
+    expect(fixture.componentInstance.ready).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('Στοιχεία λογιστικού γραφείου');
   });
 
   it('submits the fragment token and stores the returned authenticated session', () => {

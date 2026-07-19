@@ -1,8 +1,9 @@
 import { NgIf } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { finalize } from 'rxjs';
 import { AuthService, InitialSetupRequest } from '../../core/auth/auth.service';
 import { readSetupToken } from './setup-token';
 
@@ -436,6 +437,7 @@ export class SetupPageComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly changeDetector = inject(ChangeDetectorRef);
 
   setupToken = '';
   officeName = '';
@@ -456,33 +458,36 @@ export class SetupPageComponent implements OnInit {
 
   ngOnInit(): void {
     this.setupToken = readSetupToken(this.route.snapshot.fragment) ?? '';
-    this.authService.getInitialSetupStatus().subscribe({
-      next: (status) => {
-        if (!status.required) {
-          void this.router.navigate(['/login'], { replaceUrl: true });
-          return;
-        }
+    this.authService
+      .getInitialSetupStatus()
+      .pipe(finalize(() => this.changeDetector.markForCheck()))
+      .subscribe({
+        next: (status) => {
+          if (!status.required) {
+            void this.router.navigate(['/login'], { replaceUrl: true });
+            return;
+          }
 
-        this.checking = false;
-        if (!status.available) {
-          this.blockingError =
-            'Η εγκατάσταση δεν έχει ενεργό σύνδεσμο αρχικής ρύθμισης. Εκτελέστε ξανά την εγκατάσταση.';
-          return;
-        }
-        if (this.setupToken.length < 32 || this.setupToken.length > 256) {
-          this.blockingError =
-            'Ο σύνδεσμος δεν περιέχει έγκυρο token. Ανοίξτε τον σύνδεσμο που έδωσε η εγκατάσταση.';
-          return;
-        }
+          this.checking = false;
+          if (!status.available) {
+            this.blockingError =
+              'Η εγκατάσταση δεν έχει ενεργό σύνδεσμο αρχικής ρύθμισης. Εκτελέστε ξανά την εγκατάσταση.';
+            return;
+          }
+          if (this.setupToken.length < 32 || this.setupToken.length > 256) {
+            this.blockingError =
+              'Ο σύνδεσμος δεν περιέχει έγκυρο token. Ανοίξτε τον σύνδεσμο που έδωσε η εγκατάσταση.';
+            return;
+          }
 
-        this.ready = true;
-      },
-      error: () => {
-        this.checking = false;
-        this.blockingError =
-          'Δεν ήταν δυνατή η επικοινωνία με την εφαρμογή. Ελέγξτε ότι η εγκατάσταση λειτουργεί και δοκιμάστε ξανά.';
-      },
-    });
+          this.ready = true;
+        },
+        error: () => {
+          this.checking = false;
+          this.blockingError =
+            'Δεν ήταν δυνατή η επικοινωνία με την εφαρμογή. Ελέγξτε ότι η εγκατάσταση λειτουργεί και δοκιμάστε ξανά.';
+        },
+      });
   }
 
   submit(form: NgForm): void {
@@ -497,16 +502,19 @@ export class SetupPageComponent implements OnInit {
     }
 
     this.busy = true;
-    this.authService.completeInitialSetup(this.request()).subscribe({
-      next: () => {
-        this.busy = false;
-        void this.router.navigate(['/'], { replaceUrl: true });
-      },
-      error: (error: unknown) => {
-        this.busy = false;
-        this.errorMessage = apiErrorMessage(error);
-      },
-    });
+    this.authService
+      .completeInitialSetup(this.request())
+      .pipe(finalize(() => this.changeDetector.markForCheck()))
+      .subscribe({
+        next: () => {
+          this.busy = false;
+          void this.router.navigate(['/'], { replaceUrl: true });
+        },
+        error: (error: unknown) => {
+          this.busy = false;
+          this.errorMessage = apiErrorMessage(error);
+        },
+      });
   }
 
   goToLogin(): void {
