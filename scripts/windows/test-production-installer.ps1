@@ -62,7 +62,12 @@ try {
     }
   }
 
-  @("INSTALL-WINDOWS.cmd", "START-WINDOWS.cmd", "STOP-WINDOWS.cmd") | ForEach-Object {
+  @(
+    "INSTALL-WINDOWS.cmd",
+    "START-WINDOWS.cmd",
+    "STOP-WINDOWS.cmd",
+    "CONFIGURE-AADE-WINDOWS.cmd"
+  ) | ForEach-Object {
     $entryPoint = Join-Path $repositoryRoot $_
     if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
       throw "Missing Windows entry point: $_"
@@ -90,6 +95,11 @@ try {
       $values["FRONTEND_ORIGIN"] -ne ("http://localhost:{0}" -f $values["WEB_PORT"])) {
     throw "The Windows installation is not restricted to the local PC."
   }
+  if ($values["AADE_MYDATA_ENV"] -ne "production" -or
+      $values["AADE_MYDATA_PRODUCTION_READ_ENABLED"] -ne "false" -or
+      $values["AADE_MYDATA_PRODUCTION_ENABLED"] -ne "false") {
+    throw "The Windows installation did not start in locked production mode."
+  }
 
   $secretNames = @(
     "MYSQL_PASSWORD",
@@ -113,6 +123,43 @@ try {
   }
   if ((Get-Content -LiteralPath $environmentFile -Raw) -match "admin@example|ChangeMe|replace-with") {
     throw "Development or placeholder credentials leaked into the Windows production installation."
+  }
+
+  $environmentAcl = Get-Acl -LiteralPath $environmentFile
+  if (-not $environmentAcl.AreAccessRulesProtected) {
+    throw "The Windows environment file still inherits broad filesystem permissions."
+  }
+
+  . (Join-Path $PSScriptRoot "production-common.ps1")
+  . (Join-Path $PSScriptRoot "aade-configuration.ps1")
+  $aadeImportFile = Join-Path $testLocalAppData "aade-import.env"
+  [System.IO.File]::WriteAllLines(
+    $aadeImportFile,
+    @(
+      "AADE_REGISTRY_USERNAME=registry-user",
+      "AADE_REGISTRY_PASSWORD=registry-password",
+      "AADE_REGISTRY_CALLED_BY_VAT=123456789",
+      "AADE_MYDATA_ENV=test",
+      "AADE_MYDATA_USER_ID=mydata-user",
+      "AADE_MYDATA_SUBSCRIPTION_KEY=mydata-key"
+    ),
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+  Import-OpenLogistirioAadeConfiguration `
+    -EnvironmentFile $environmentFile `
+    -ImportFile $aadeImportFile `
+    -EnableProductionWrites `
+    -EnableScheduledSync
+  $values = Read-TestEnvironment -Path $environmentFile
+  if ($values["AADE_REGISTRY_USERNAME"] -ne "registry-user" -or
+      $values["AADE_REGISTRY_PASSWORD"] -ne "registry-password" -or
+      $values["AADE_MYDATA_USER_ID"] -ne "mydata-user" -or
+      $values["AADE_MYDATA_SUBSCRIPTION_KEY"] -ne "mydata-key" -or
+      $values["AADE_MYDATA_ENV"] -ne "production" -or
+      $values["AADE_MYDATA_PRODUCTION_READ_ENABLED"] -ne "true" -or
+      $values["AADE_MYDATA_PRODUCTION_ENABLED"] -ne "true" -or
+      $values["MYDATA_SCHEDULED_SYNC_ENABLED"] -ne "true") {
+    throw "The Windows AADE importer did not configure real production access."
   }
 
   $lines = Get-Content -LiteralPath $environmentFile
@@ -227,7 +274,7 @@ try {
   }
   Start-Sleep -Milliseconds 500
 
-  Invoke-InstallerCheck -InstallerArguments @("-NoBrowser")
+  Invoke-InstallerCheck -InstallerArguments @("-NoBrowser", "-SkipAadeConfiguration")
 
   $deploymentValues = Read-TestEnvironment -Path $environmentFile
   if ($deploymentValues["APP_VERSION"] -ne $releaseVersion) {

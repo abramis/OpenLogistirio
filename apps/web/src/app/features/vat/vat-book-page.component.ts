@@ -412,7 +412,8 @@ export class VatBookPageComponent {
     const labels: Record<string, string> = {
       SALE_INVOICE: 'Πώληση',
       PURCHASE_INVOICE: 'Αγορά / δαπάνη',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
     };
 
     return code ? (labels[code] ?? code) : '-';
@@ -433,7 +434,8 @@ export class VatBookPageComponent {
     const labels: Record<string, string> = {
       SALES_INVOICE: 'Τιμολόγιο πώλησης',
       PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
       RETAIL_RECEIPT: 'Απόδειξη λιανικής',
     };
 
@@ -514,13 +516,15 @@ function toBook(documents: DocumentListItem[]) {
 
 function isRevenueDocument(document: DocumentListItem): boolean {
   return (
-    document.movementCode !== 'PURCHASE_INVOICE' && document.documentType !== 'PURCHASE_INVOICE'
+    !['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.movementCode ?? '') &&
+    !['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType)
   );
 }
 
 function isExpenseDocument(document: DocumentListItem): boolean {
   return (
-    document.movementCode === 'PURCHASE_INVOICE' || document.documentType === 'PURCHASE_INVOICE'
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.movementCode ?? '') ||
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType)
   );
 }
 
@@ -528,7 +532,7 @@ function signedValue(
   document: DocumentListItem,
   field: 'netAmount' | 'vatAmount' | 'totalAmount',
 ): number {
-  const sign = document.documentType === 'CREDIT_NOTE' ? -1 : 1;
+  const sign = ['CREDIT_NOTE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType) ? -1 : 1;
   return roundMoney(Number(document[field] || 0) * sign);
 }
 

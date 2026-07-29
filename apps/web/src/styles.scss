@@ -681,3 +681,46 @@ details.disclosure-card[open] > summary::after {
   color: var(--err);
   border-color: var(--err-bd);
 }
+
+/* VAT declaration submission and payment tracking. */
+.vat-payment-builder,
+.vat-payment-row,
+.vat-payment-status,
+.payment-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vat-payment-builder,
+.vat-payment-row {
+  grid-column: 1 / -1;
+}
+
+.vat-payment-row input {
+  width: 180px;
+}
+
+.vat-payments {
+  margin: 0 18px 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.vat-payments h3 {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+}
+
+.vat-payment-status {
+  justify-content: space-between;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+}
+
+.payment-entry input {
+  width: 170px;
+}

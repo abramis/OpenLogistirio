@@ -2,13 +2,15 @@
 param(
   [switch]$ValidateOnly,
   [switch]$PrepareOnly,
-  [switch]$NoBrowser
+  [switch]$NoBrowser,
+  [switch]$SkipAadeConfiguration
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2.0
 
 . (Join-Path $PSScriptRoot "production-common.ps1")
+. (Join-Path $PSScriptRoot "aade-configuration.ps1")
 
 $previousVersion = $null
 $restoreVersionOnFailure = $false
@@ -95,7 +97,7 @@ try {
       "RATE_LIMIT_WINDOW_MS=60000",
       "RATE_LIMIT_MAX=240",
       "TRUST_PROXY=true",
-      "AADE_MYDATA_ENV=test",
+      "AADE_MYDATA_ENV=production",
       "AADE_MYDATA_PRODUCTION_READ_ENABLED=false",
       "AADE_MYDATA_PRODUCTION_ENABLED=false",
       "MYDATA_SCHEDULED_SYNC_ENABLED=false",
@@ -130,6 +132,10 @@ try {
     Set-OpenLogistirioEnvironmentValue -Path $environmentFile -Name "APP_VERSION" -Value $releaseVersion
     $restoreVersionOnFailure = -not [string]::IsNullOrWhiteSpace($previousVersion) -and $previousVersion -ne $releaseVersion
     Write-OpenLogistirioSuccess "Βρέθηκε η υπάρχουσα εγκατάσταση. Τα δεδομένα και οι κωδικοί της διατηρούνται."
+  }
+
+  if (-not $PrepareOnly -and -not $SkipAadeConfiguration) {
+    Initialize-OpenLogistirioAadeConfiguration -EnvironmentFile $environmentFile
   }
 
   Assert-OpenLogistirioEnvironment -Path $environmentFile

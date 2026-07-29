@@ -237,6 +237,22 @@ function Write-Utf8FileWithoutBom {
   $encoding = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllLines($temporaryPath, $Lines, $encoding)
   Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
+  Protect-OpenLogistirioEnvironmentFile -Path $Path
+}
+
+function Protect-OpenLogistirioEnvironmentFile {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return
+  }
+
+  $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+  $sidRule = "*" + $identity.User.Value + ":(F)"
+  $null = & icacls.exe $Path "/inheritance:r" "/grant:r" $sidRule
+  if ($LASTEXITCODE -ne 0) {
+    throw "Δεν ήταν δυνατό να περιοριστεί η πρόσβαση στο ασφαλές αρχείο εγκατάστασης."
+  }
 }
 
 function Set-OpenLogistirioEnvironmentValue {

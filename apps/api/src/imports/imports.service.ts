@@ -742,6 +742,7 @@ function defaultMovementCode(documentType: DocumentType): string {
     SALES_INVOICE: 'SALE_INVOICE',
     PURCHASE_INVOICE: 'PURCHASE_INVOICE',
     CREDIT_NOTE: 'CREDIT_NOTE',
+    PURCHASE_CREDIT_NOTE: 'PURCHASE_CREDIT_NOTE',
     RETAIL_RECEIPT: 'SALE_INVOICE',
   };
 
@@ -753,6 +754,7 @@ function defaultJournalCode(documentType: DocumentType): string {
     SALES_INVOICE: 'SALES',
     PURCHASE_INVOICE: 'PURCHASES',
     CREDIT_NOTE: 'SALES',
+    PURCHASE_CREDIT_NOTE: 'PURCHASES',
     RETAIL_RECEIPT: 'SALES',
   };
 
@@ -760,7 +762,8 @@ function defaultJournalCode(documentType: DocumentType): string {
 }
 
 function counterpartyTypeForDocument(documentType: DocumentType): CounterpartyType {
-  return documentType === DocumentType.PURCHASE_INVOICE
+  return documentType === DocumentType.PURCHASE_INVOICE ||
+    documentType === DocumentType.PURCHASE_CREDIT_NOTE
     ? CounterpartyType.SUPPLIER
     : CounterpartyType.CUSTOMER;
 }

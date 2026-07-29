@@ -363,6 +363,12 @@ describe('AccountingService', () => {
             netAmount: new Prisma.Decimal('20.00'),
             vatAmount: new Prisma.Decimal('4.80'),
           },
+          {
+            documentType: DocumentType.PURCHASE_CREDIT_NOTE,
+            issueDate: new Date('2026-07-04T00:00:00.000Z'),
+            netAmount: new Prisma.Decimal('10.00'),
+            vatAmount: new Prisma.Decimal('2.40'),
+          },
         ]),
       },
       journalEntryLine: {
@@ -371,8 +377,8 @@ describe('AccountingService', () => {
           .mockResolvedValue([
             vatLine('70.00', 7, 0, 80),
             vatLine('54.00', 7, 0, 19.2),
-            vatLine('20.00', 7, 50, 0),
-            vatLine('54.01', 7, 12, 0),
+            vatLine('20.00', 7, 40, 0),
+            vatLine('54.01', 7, 9.6, 0),
           ]),
       },
     };
@@ -387,15 +393,15 @@ describe('AccountingService', () => {
         documents: expect.objectContaining({
           salesNet: 80,
           outputVat: 19.2,
-          purchasesNet: 50,
-          inputVat: 12,
-          count: 3,
+          purchasesNet: 40,
+          inputVat: 9.6,
+          count: 4,
         }),
         ledger: {
           salesNet: 80,
           outputVat: 19.2,
-          purchasesNet: 50,
-          inputVat: 12,
+          purchasesNet: 40,
+          inputVat: 9.6,
         },
       }),
     );

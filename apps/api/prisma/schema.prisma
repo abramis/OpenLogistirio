@@ -25,6 +25,7 @@ enum DocumentType {
   SALES_INVOICE
   PURCHASE_INVOICE
   CREDIT_NOTE
+  PURCHASE_CREDIT_NOTE
   RETAIL_RECEIPT
 }
 
@@ -134,6 +135,47 @@ enum DeclarationWorkpaperPeriodKind {
   MONTHLY
   QUARTERLY
   ANNUAL
+}
+
+enum DeclarationReturnType {
+  INITIAL
+  AMENDING
+}
+
+enum WithholdingTaxCategory {
+  BUSINESS_ACTIVITY
+  DIVIDENDS
+  INTEREST
+  ROYALTIES
+}
+
+enum WithholdingTaxReturnType {
+  INITIAL
+  AMENDING
+}
+
+enum WithholdingTaxStatus {
+  DRAFT
+  READY
+  APPROVED
+  SUBMITTED
+}
+
+enum AnnualTaxReturnKind {
+  INDIVIDUAL_E1
+  LEGAL_ENTITY_N
+}
+
+enum AnnualTaxReturnType {
+  INITIAL
+  AMENDING
+}
+
+enum AnnualTaxReturnStatus {
+  DRAFT
+  READY
+  APPROVED
+  SUBMITTED
 }
 
 enum PeriodCloseKind {
@@ -248,6 +290,116 @@ enum StockMovementKind {
   CANCEL_IN_REVERSAL
 }
 
+enum PayrollEmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PayrollCompensationType {
+  MONTHLY
+  DAILY
+}
+
+enum PayrollWeeklySystem {
+  FIVE_DAY
+  SIX_DAY
+}
+
+enum PayrollPeriodStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  PAID
+}
+
+enum PayrollEventType {
+  CHRISTMAS_BONUS
+  EASTER_BONUS
+  LEAVE_ALLOWANCE
+  SICKNESS
+  RETROACTIVE
+  BONUS
+  OVERTIME
+}
+
+enum PayrollSicknessBenefitStatus {
+  PENDING
+  APPROVED
+  NOT_ELIGIBLE
+}
+
+enum PayrollLeaveType {
+  ANNUAL
+  UNPAID
+  SICK
+  MATERNITY
+  SPECIAL_MATERNITY_PROTECTION
+  PATERNITY
+  PARENTAL
+  CAREGIVER
+  OTHER
+}
+
+enum PayrollLeavePaymentSource {
+  EMPLOYER
+  E_EFKA_DYPA
+  DYPA
+  UNPAID
+  MIXED
+}
+
+enum PayrollTerminationType {
+  EMPLOYER_DISMISSAL
+  VOLUNTARY_RESIGNATION
+  FIXED_TERM_EXPIRY
+  RETIREMENT
+  DEATH
+  OTHER
+}
+
+enum PayrollTerminationStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum PayrollErganiDeclarationType {
+  HIRING
+  INITIAL_WORK_SCHEDULE
+  WORK_SCHEDULE_CHANGE
+  DIGITAL_CARD_ENROLLMENT
+  EXECUTIVE_STATUS_ACQUIRED
+  EXECUTIVE_STATUS_LOST
+  PAY_CHANGE_AGREEMENT
+  PAY_CHANGE_LEGISLATION
+  SPECIALTY_CHANGE
+  WORKPLACE_CHANGE
+  PART_TIME_TO_FULL_TIME
+  FULL_TIME_TO_PART_TIME
+  FULL_TIME_TO_ROTATING
+  FULL_TIME_TO_ROTATING_UNILATERAL
+  FIXED_TO_OPEN_ENDED
+  FIXED_TERM_EXTENSION
+  WORK_TIME_ARRANGEMENT
+  OTHER
+}
+
+enum PayrollErganiDeclarationStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum PayrollErganiAcceptanceMethod {
+  SIGNED_SCAN
+  QUALIFIED_E_SIGNATURE
+  GOV_GR_DIGITAL_CONFIRMATION
+  MYERGANI
+}
+
+enum ApdDeclarationType {
+  NORMAL
+  SUPPLEMENTARY
+}
+
 model AccountingOffice {
   id        String   @id @default(cuid())
   name      String
@@ -258,33 +410,44 @@ model AccountingOffice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users                 User[]
-  clientCompanies       ClientCompany[]
-  documents             Document[]
-  fixedAssets           FixedAsset[]
-  clientSetupItems      ClientSetupItem[]
-  obligations           OfficeObligation[]
-  taxCalendarRules      TaxCalendarRule[]
-  taxCalendarOverrides  TaxCalendarOverride[]
-  counterparties        Counterparty[]
-  importBatches         ImportBatch[]
-  declarationWorkpapers DeclarationWorkpaper[]
-  chartAccounts         ChartAccount[]
-  documentPostingRules  DocumentPostingRule[]
-  accountingPeriods     AccountingPeriod[]
-  journalEntries        JournalEntry[]
-  auditLogs             AuditLog[]
-  myDataSyncRuns        MyDataSyncRun[]
-  myDataSnapshots       MyDataSnapshot[]
-  periodCloseReviews    PeriodCloseReview[]
-  supportingDocuments  SupportingDocument[]
-  inventoryItems       InventoryItem[]
-  warehouses           Warehouse[]
-  vehicles             Vehicle[]
-  dispatchNotes        DispatchNote[]
-  stockMovements       StockMovement[]
-  dispatchReceipts     DispatchDeliveryReceipt[]
-  dispatchEvents       DispatchLifecycleEvent[]
+  users                     User[]
+  clientCompanies           ClientCompany[]
+  documents                 Document[]
+  fixedAssets               FixedAsset[]
+  clientSetupItems          ClientSetupItem[]
+  obligations               OfficeObligation[]
+  taxCalendarRules          TaxCalendarRule[]
+  taxCalendarOverrides      TaxCalendarOverride[]
+  counterparties            Counterparty[]
+  importBatches             ImportBatch[]
+  declarationWorkpapers     DeclarationWorkpaper[]
+  chartAccounts             ChartAccount[]
+  documentPostingRules      DocumentPostingRule[]
+  accountingPeriods         AccountingPeriod[]
+  journalEntries            JournalEntry[]
+  auditLogs                 AuditLog[]
+  myDataSyncRuns            MyDataSyncRun[]
+  myDataSnapshots           MyDataSnapshot[]
+  periodCloseReviews        PeriodCloseReview[]
+  supportingDocuments       SupportingDocument[]
+  inventoryItems            InventoryItem[]
+  warehouses                Warehouse[]
+  vehicles                  Vehicle[]
+  dispatchNotes             DispatchNote[]
+  stockMovements            StockMovement[]
+  dispatchReceipts          DispatchDeliveryReceipt[]
+  dispatchEvents            DispatchLifecycleEvent[]
+  payrollEmployees          PayrollEmployee[]
+  payrollContracts          PayrollContract[]
+  payrollPeriods            PayrollPeriod[]
+  payrollEntries            PayrollEntry[]
+  payrollEvents             PayrollEvent[]
+  payrollLeaves             PayrollLeave[]
+  payrollTerminations       PayrollTermination[]
+  payrollErganiDeclarations PayrollErganiDeclaration[]
+  payrollEmployerSettings   PayrollEmployerSettings[]
+  annualTaxReturns          AnnualTaxReturn[]
+  withholdingTaxReturns     WithholdingTaxReturn[]
 }
 
 model User {
@@ -301,16 +464,19 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  accountingOffice              AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
-  auditLogs                     AuditLog[]
-  assignedObligations           OfficeObligation[]     @relation("AssignedObligations")
-  refreshTokens                 RefreshToken[]
-  passwordResetTokens           PasswordResetToken[]
-  preparedPeriodCloseReviews    PeriodCloseReview[]    @relation("PeriodClosePreparedBy")
-  approvedPeriodCloseReviews    PeriodCloseReview[]    @relation("PeriodCloseApprovedBy")
-  approvedDeclarationWorkpapers DeclarationWorkpaper[] @relation("DeclarationWorkpaperApprovedBy")
-  reviewedMyDataSnapshots         MyDataSnapshot[]      @relation("MyDataSnapshotReviewedBy")
-  approvedExpenseClassifications Document[]            @relation("ExpenseClassificationApprovedBy")
+  accountingOffice               AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  auditLogs                      AuditLog[]
+  assignedObligations            OfficeObligation[]     @relation("AssignedObligations")
+  refreshTokens                  RefreshToken[]
+  passwordResetTokens            PasswordResetToken[]
+  preparedPeriodCloseReviews     PeriodCloseReview[]    @relation("PeriodClosePreparedBy")
+  approvedPeriodCloseReviews     PeriodCloseReview[]    @relation("PeriodCloseApprovedBy")
+  approvedDeclarationWorkpapers  DeclarationWorkpaper[] @relation("DeclarationWorkpaperApprovedBy")
+  reviewedMyDataSnapshots        MyDataSnapshot[]       @relation("MyDataSnapshotReviewedBy")
+  approvedExpenseClassifications Document[]             @relation("ExpenseClassificationApprovedBy")
+  approvedPayrollPeriods         PayrollPeriod[]        @relation("PayrollPeriodApprovedBy")
+  approvedAnnualTaxReturns       AnnualTaxReturn[]      @relation("AnnualTaxReturnApprovedBy")
+  approvedWithholdingTaxReturns  WithholdingTaxReturn[] @relation("WithholdingTaxReturnApprovedBy")
 
   @@index([accountingOfficeId])
   @@index([disabledAt])
@@ -369,29 +535,40 @@ model ClientCompany {
   updatedAt           DateTime               @updatedAt
   deletedAt           DateTime?
 
-  accountingOffice      AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
-  documents             Document[]
-  fixedAssets           FixedAsset[]
-  setupItems            ClientSetupItem[]
-  obligations           OfficeObligation[]
-  counterparties        Counterparty[]
-  importBatches         ImportBatch[]
-  declarationWorkpapers DeclarationWorkpaper[]
-  chartAccounts         ChartAccount[]
-  documentPostingRules  DocumentPostingRule[]
-  accountingPeriods     AccountingPeriod[]
-  journalEntries        JournalEntry[]
-  myDataSyncRuns        MyDataSyncRun[]
-  myDataSnapshots       MyDataSnapshot[]
-  periodCloseReviews    PeriodCloseReview[]
-  supportingDocuments  SupportingDocument[]
-  inventoryItems       InventoryItem[]
-  warehouses           Warehouse[]
-  vehicles             Vehicle[]
-  dispatchNotes        DispatchNote[]
-  stockMovements       StockMovement[]
-  dispatchReceipts     DispatchDeliveryReceipt[]
-  dispatchEvents       DispatchLifecycleEvent[]
+  accountingOffice          AccountingOffice           @relation(fields: [accountingOfficeId], references: [id])
+  documents                 Document[]
+  fixedAssets               FixedAsset[]
+  setupItems                ClientSetupItem[]
+  obligations               OfficeObligation[]
+  counterparties            Counterparty[]
+  importBatches             ImportBatch[]
+  declarationWorkpapers     DeclarationWorkpaper[]
+  chartAccounts             ChartAccount[]
+  documentPostingRules      DocumentPostingRule[]
+  accountingPeriods         AccountingPeriod[]
+  journalEntries            JournalEntry[]
+  myDataSyncRuns            MyDataSyncRun[]
+  myDataSnapshots           MyDataSnapshot[]
+  periodCloseReviews        PeriodCloseReview[]
+  supportingDocuments       SupportingDocument[]
+  inventoryItems            InventoryItem[]
+  warehouses                Warehouse[]
+  vehicles                  Vehicle[]
+  dispatchNotes             DispatchNote[]
+  stockMovements            StockMovement[]
+  dispatchReceipts          DispatchDeliveryReceipt[]
+  dispatchEvents            DispatchLifecycleEvent[]
+  payrollEmployees          PayrollEmployee[]
+  payrollContracts          PayrollContract[]
+  payrollPeriods            PayrollPeriod[]
+  payrollEntries            PayrollEntry[]
+  payrollEvents             PayrollEvent[]
+  payrollLeaves             PayrollLeave[]
+  payrollTerminations       PayrollTermination[]
+  payrollErganiDeclarations PayrollErganiDeclaration[]
+  payrollEmployerSettings   PayrollEmployerSettings?
+  annualTaxReturns          AnnualTaxReturn[]
+  withholdingTaxReturns     WithholdingTaxReturn[]
 
   @@unique([accountingOfficeId, vatNumber])
   @@index([accountingOfficeId, deletedAt])
@@ -580,21 +757,21 @@ model Counterparty {
 }
 
 model InventoryItem {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   accountingOfficeId String
   clientCompanyId    String
-  code               String   @db.VarChar(50)
-  name               String   @db.VarChar(200)
+  code               String    @db.VarChar(50)
+  name               String    @db.VarChar(200)
   description        String?
-  measurementUnit    Int      @default(1)
-  trackInventory     Boolean  @default(true)
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  measurementUnit    Int       @default(1)
+  trackInventory     Boolean   @default(true)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
 
-  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  accountingOffice AccountingOffice   @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany      @relation(fields: [clientCompanyId], references: [id])
   balances         WarehouseStock[]
   dispatchLines    DispatchNoteLine[]
   stockMovements   StockMovement[]
@@ -604,39 +781,39 @@ model InventoryItem {
 }
 
 model Warehouse {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   accountingOfficeId String
   clientCompanyId    String
-  code               String   @db.VarChar(40)
-  name               String   @db.VarChar(200)
-  address             String?
-  branchNumber        Int?
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  deletedAt           DateTime?
+  code               String    @db.VarChar(40)
+  name               String    @db.VarChar(200)
+  address            String?
+  branchNumber       Int?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  accountingOffice     AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany        ClientCompany    @relation(fields: [clientCompanyId], references: [id])
-  balances             WarehouseStock[]
-  outgoingDispatches   DispatchNote[]   @relation("DispatchLoadingWarehouse")
-  incomingDispatches   DispatchNote[]   @relation("DispatchDeliveryWarehouse")
-  stockMovements       StockMovement[]
+  accountingOffice   AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany      ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  balances           WarehouseStock[]
+  outgoingDispatches DispatchNote[]   @relation("DispatchLoadingWarehouse")
+  incomingDispatches DispatchNote[]   @relation("DispatchDeliveryWarehouse")
+  stockMovements     StockMovement[]
 
   @@unique([clientCompanyId, code], map: "Warehouse_client_code_key")
   @@index([accountingOfficeId, clientCompanyId, isActive], map: "Warehouse_office_client_active_idx")
 }
 
 model Vehicle {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   accountingOfficeId String
   clientCompanyId    String
-  registrationNumber String   @db.VarChar(40)
+  registrationNumber String    @db.VarChar(40)
   description        String?
-  vehicleType        String?  @db.VarChar(80)
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  vehicleType        String?   @db.VarChar(80)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
 
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
@@ -688,12 +865,12 @@ model DispatchNote {
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
-  accountingOffice  AccountingOffice  @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany     ClientCompany     @relation(fields: [clientCompanyId], references: [id])
-  counterparty      Counterparty?     @relation(fields: [counterpartyId], references: [id])
-  loadingWarehouse  Warehouse         @relation("DispatchLoadingWarehouse", fields: [loadingWarehouseId], references: [id])
-  deliveryWarehouse Warehouse?        @relation("DispatchDeliveryWarehouse", fields: [deliveryWarehouseId], references: [id])
-  vehicle           Vehicle?          @relation(fields: [vehicleId], references: [id])
+  accountingOffice  AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany     ClientCompany            @relation(fields: [clientCompanyId], references: [id])
+  counterparty      Counterparty?            @relation(fields: [counterpartyId], references: [id])
+  loadingWarehouse  Warehouse                @relation("DispatchLoadingWarehouse", fields: [loadingWarehouseId], references: [id])
+  deliveryWarehouse Warehouse?               @relation("DispatchDeliveryWarehouse", fields: [deliveryWarehouseId], references: [id])
+  vehicle           Vehicle?                 @relation(fields: [vehicleId], references: [id])
   lines             DispatchNoteLine[]
   stockMovements    StockMovement[]
   deliveryReceipt   DispatchDeliveryReceipt?
@@ -718,8 +895,8 @@ model DispatchNoteLine {
   otherMovePurposeLineTitle String?  @db.VarChar(150)
   createdAt                 DateTime @default(now())
 
-  dispatchNote  DispatchNote    @relation(fields: [dispatchNoteId], references: [id], onDelete: Cascade)
-  item          InventoryItem   @relation(fields: [itemId], references: [id])
+  dispatchNote   DispatchNote                 @relation(fields: [dispatchNoteId], references: [id], onDelete: Cascade)
+  item           InventoryItem                @relation(fields: [itemId], references: [id])
   stockMovements StockMovement[]
   receiptLine    DispatchDeliveryReceiptLine?
 
@@ -740,10 +917,10 @@ model StockMovement {
   occurredAt         DateTime
   createdAt          DateTime          @default(now())
 
-  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
-  warehouse        Warehouse        @relation(fields: [warehouseId], references: [id])
-  item             InventoryItem    @relation(fields: [itemId], references: [id])
+  accountingOffice AccountingOffice  @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany     @relation(fields: [clientCompanyId], references: [id])
+  warehouse        Warehouse         @relation(fields: [warehouseId], references: [id])
+  item             InventoryItem     @relation(fields: [itemId], references: [id])
   dispatchNote     DispatchNote?     @relation(fields: [dispatchNoteId], references: [id])
   dispatchNoteLine DispatchNoteLine? @relation(fields: [dispatchNoteLineId], references: [id])
 
@@ -761,11 +938,11 @@ model DispatchDeliveryReceipt {
   deliveredWithoutRecipient Boolean         @default(false)
   receivedAt                DateTime
   notes                     String?
-  createdAt                 DateTime         @default(now())
+  createdAt                 DateTime        @default(now())
 
-  accountingOffice AccountingOffice             @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany    ClientCompany                @relation(fields: [clientCompanyId], references: [id])
-  dispatchNote     DispatchNote                 @relation(fields: [dispatchNoteId], references: [id])
+  accountingOffice AccountingOffice              @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany                 @relation(fields: [clientCompanyId], references: [id])
+  dispatchNote     DispatchNote                  @relation(fields: [dispatchNoteId], references: [id])
   lines            DispatchDeliveryReceiptLine[]
 
   @@index([accountingOfficeId, clientCompanyId, receivedAt], map: "DispatchReceipt_office_client_date_idx")
@@ -783,7 +960,7 @@ model DispatchDeliveryReceiptLine {
   createdAt          DateTime @default(now())
 
   receipt          DispatchDeliveryReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  dispatchNoteLine DispatchNoteLine         @relation(fields: [dispatchNoteLineId], references: [id])
+  dispatchNoteLine DispatchNoteLine        @relation(fields: [dispatchNoteLineId], references: [id])
 
   @@index([receiptId], map: "DispatchReceiptLine_receipt_idx")
 }
@@ -845,40 +1022,233 @@ model ImportBatch {
 }
 
 model DeclarationWorkpaper {
-  id                 String                     @id @default(cuid())
-  accountingOfficeId String
-  clientCompanyId    String
-  type               DeclarationWorkpaperType
-  title              String
-  periodYear         Int
-  periodMonth        Int?
-  periodKind         DeclarationWorkpaperPeriodKind @default(MONTHLY)
-  periodStartMonth   Int
-  periodEndMonth     Int
-  periodCloseReviewId String?
-  status             DeclarationWorkpaperStatus @default(DRAFT)
-  totals             Json
-  notes              String?
-  generatedAt        DateTime                   @default(now())
-  submittedAt        DateTime?
-  submissionReference String?
-  submissionDate     DateTime?
+  id                    String                         @id @default(cuid())
+  accountingOfficeId    String
+  clientCompanyId       String
+  type                  DeclarationWorkpaperType
+  title                 String
+  periodYear            Int
+  periodMonth           Int?
+  periodKind            DeclarationWorkpaperPeriodKind @default(MONTHLY)
+  periodStartMonth      Int
+  periodEndMonth        Int
+  periodCloseReviewId   String?
+  returnType            DeclarationReturnType          @default(INITIAL)
+  revision              Int                            @default(0)
+  status                DeclarationWorkpaperStatus     @default(DRAFT)
+  totals                Json
+  notes                 String?
+  generatedAt           DateTime                       @default(now())
+  submissionDeadline    DateTime?
+  submittedAt           DateTime?
+  submissionReference   String?
+  submissionDate        DateTime?
+  lateSubmission        Boolean?
   submissionAttachments Json?
-  approvedById       String?
-  approvedAt         DateTime?
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
+  vatPayableAmount      Decimal                        @default(0) @db.Decimal(14, 2)
+  vatCreditCarryForward Decimal                        @default(0) @db.Decimal(14, 2)
+  vatRefundClaim        Decimal                        @default(0) @db.Decimal(14, 2)
+  vatDebtId             String?                        @db.VarChar(160)
+  approvedById          String?
+  approvedAt            DateTime?
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
 
-  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
-  approvedBy       User?            @relation("DeclarationWorkpaperApprovedBy", fields: [approvedById], references: [id])
-  periodCloseReview PeriodCloseReview? @relation(fields: [periodCloseReviewId], references: [id])
+  accountingOffice  AccountingOffice        @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany     ClientCompany           @relation(fields: [clientCompanyId], references: [id])
+  approvedBy        User?                   @relation("DeclarationWorkpaperApprovedBy", fields: [approvedById], references: [id])
+  periodCloseReview PeriodCloseReview?      @relation(fields: [periodCloseReviewId], references: [id])
+  taxPayments       DeclarationTaxPayment[]
 
-  @@unique([clientCompanyId, type, periodYear, periodKind, periodEndMonth], map: "DeclWorkpaper_period_kind_key")
+  @@unique([clientCompanyId, type, periodYear, periodKind, periodEndMonth, revision], map: "DeclWorkpaper_period_revision_key")
   @@index([accountingOfficeId, type, status], map: "DeclWorkpaper_office_type_status_idx")
   @@index([clientCompanyId, periodYear, periodMonth], map: "DeclWorkpaper_client_period_idx")
   @@index([approvedById], map: "DeclWorkpaper_approved_by_idx")
   @@index([periodCloseReviewId], map: "DeclWorkpaper_period_close_idx")
+}
+
+model DeclarationTaxPayment {
+  id                     String    @id @default(cuid())
+  declarationWorkpaperId String
+  installmentNumber      Int
+  dueDate                DateTime
+  amount                 Decimal   @db.Decimal(14, 2)
+  paidAt                 DateTime?
+  paymentReference       String?   @db.VarChar(160)
+  latePayment            Boolean?
+  notes                  String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  declarationWorkpaper DeclarationWorkpaper @relation(fields: [declarationWorkpaperId], references: [id], onDelete: Cascade)
+
+  @@unique([declarationWorkpaperId, installmentNumber], map: "DeclarationTaxPayment_workpaper_number_key")
+  @@index([dueDate, paidAt], map: "DeclarationTaxPayment_due_paid_idx")
+}
+
+model WithholdingTaxReturn {
+  id                       String                   @id @default(cuid())
+  accountingOfficeId       String
+  clientCompanyId          String
+  periodYear               Int
+  periodMonth              Int
+  category                 WithholdingTaxCategory
+  returnType               WithholdingTaxReturnType @default(INITIAL)
+  revision                 Int                      @default(0)
+  status                   WithholdingTaxStatus     @default(DRAFT)
+  submissionDeadline       DateTime
+  declarantName            String                   @db.VarChar(30)
+  declarantFirstName       String?                  @db.VarChar(9)
+  declarantFatherName      String?                  @db.VarChar(3)
+  declarantIsLegalEntity   Boolean                  @default(true)
+  declarantVatNumber       String                   @db.VarChar(9)
+  businessActivity         String                   @db.VarChar(16)
+  city                     String                   @db.VarChar(10)
+  street                   String                   @db.VarChar(16)
+  streetNumber             String                   @db.VarChar(5)
+  postalCode               String                   @db.VarChar(5)
+  grossAmount              Decimal                  @default(0) @db.Decimal(14, 2)
+  deductionsAmount         Decimal                  @default(0) @db.Decimal(14, 2)
+  netAmount                Decimal                  @default(0) @db.Decimal(14, 2)
+  assessedTaxAmount        Decimal                  @default(0) @db.Decimal(14, 2)
+  withheldTaxAmount        Decimal                  @default(0) @db.Decimal(14, 2)
+  digitalFeeAmount         Decimal                  @default(0) @db.Decimal(14, 2)
+  digitalFeeOgaAmount      Decimal                  @default(0) @db.Decimal(14, 2)
+  payableAmount            Decimal                  @default(0) @db.Decimal(14, 2)
+  approvedSnapshot         Json?
+  approvedById             String?
+  approvedAt               DateTime?
+  fileGeneratedAt          DateTime?
+  fileProtocol             String?                  @db.VarChar(160)
+  submittedAt              DateTime?
+  submissionReference      String?                  @db.VarChar(160)
+  debtId                   String?                  @db.VarChar(160)
+  lateSubmission           Boolean?
+  paidAt                   DateTime?
+  paymentReference         String?                  @db.VarChar(160)
+  latePayment              Boolean?
+  notes                    String?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+
+  accountingOffice AccountingOffice        @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany           @relation(fields: [clientCompanyId], references: [id])
+  approvedBy       User?                   @relation("WithholdingTaxReturnApprovedBy", fields: [approvedById], references: [id])
+  lines            WithholdingTaxReturnLine[]
+
+  @@unique([clientCompanyId, periodYear, periodMonth, category, revision], map: "WithholdingTaxReturn_period_category_revision_key")
+  @@index([accountingOfficeId, status, submissionDeadline], map: "WithholdingTaxReturn_office_status_deadline_idx")
+  @@index([clientCompanyId, periodYear, periodMonth], map: "WithholdingTaxReturn_client_period_idx")
+  @@index([approvedById], map: "WithholdingTaxReturn_approved_by_idx")
+}
+
+model WithholdingTaxReturnLine {
+  id                        String   @id @default(cuid())
+  withholdingTaxReturnId    String
+  beneficiaryVatNumber      String?  @db.VarChar(9)
+  beneficiaryLastName       String   @db.VarChar(18)
+  beneficiaryFirstName      String?  @db.VarChar(9)
+  beneficiaryFatherName     String?  @db.VarChar(3)
+  beneficiarySocialSecurity String?  @db.VarChar(11)
+  foreignWithoutGreekVat    Boolean  @default(false)
+  countryCode               String?  @db.VarChar(2)
+  incomeCode                String   @db.VarChar(2)
+  paymentDate               DateTime
+  grossAmount               Decimal  @db.Decimal(14, 2)
+  deductionsAmount          Decimal  @default(0) @db.Decimal(14, 2)
+  netAmount                 Decimal  @db.Decimal(14, 2)
+  withholdingRate           Decimal  @db.Decimal(6, 3)
+  assessedTaxAmount         Decimal  @db.Decimal(14, 2)
+  withheldTaxAmount         Decimal  @db.Decimal(14, 2)
+  digitalFeeRate            Decimal  @default(0) @db.Decimal(5, 2)
+  digitalFeeAmount          Decimal  @default(0) @db.Decimal(14, 2)
+  digitalFeeOgaAmount       Decimal  @default(0) @db.Decimal(14, 2)
+  exemptionLawArticle       String?  @db.VarChar(4)
+  exemptionLawNumber        String?  @db.VarChar(4)
+  exemptionLawYear          String?  @db.VarChar(4)
+  notes                     String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  withholdingTaxReturn WithholdingTaxReturn @relation(fields: [withholdingTaxReturnId], references: [id], onDelete: Cascade)
+
+  @@index([withholdingTaxReturnId, beneficiaryVatNumber], map: "WithholdingTaxLine_return_beneficiary_idx")
+}
+
+model AnnualTaxReturn {
+  id                        String                @id @default(cuid())
+  accountingOfficeId        String
+  clientCompanyId           String
+  fiscalYear                Int
+  kind                      AnnualTaxReturnKind
+  returnType                AnnualTaxReturnType   @default(INITIAL)
+  revision                  Int                   @default(0)
+  status                    AnnualTaxReturnStatus @default(DRAFT)
+  includesE2                Boolean               @default(false)
+  includesE3                Boolean               @default(true)
+  submissionDeadline        DateTime
+  bookRevenue               Decimal               @default(0) @db.Decimal(14, 2)
+  bookExpenses              Decimal               @default(0) @db.Decimal(14, 2)
+  accountingResult          Decimal               @default(0) @db.Decimal(14, 2)
+  myDataRevenue             Decimal               @default(0) @db.Decimal(14, 2)
+  myDataExpenses            Decimal               @default(0) @db.Decimal(14, 2)
+  nonDeductibleExpenses     Decimal               @default(0) @db.Decimal(14, 2)
+  taxExemptIncome           Decimal               @default(0) @db.Decimal(14, 2)
+  otherTaxAdditions         Decimal               @default(0) @db.Decimal(14, 2)
+  otherTaxDeductions        Decimal               @default(0) @db.Decimal(14, 2)
+  priorTaxLosses            Decimal               @default(0) @db.Decimal(14, 2)
+  taxableResult             Decimal               @default(0) @db.Decimal(14, 2)
+  unpostedDocumentCount     Int                   @default(0)
+  unresolvedMyDataCount     Int                   @default(0)
+  openPeriodCount           Int                   @default(0)
+  missingPeriodCount        Int                   @default(0)
+  unpostedDepreciationCount Int                   @default(0)
+  checklist                 Json
+  adjustmentNotes           String?
+  approvedById              String?
+  approvedAt                DateTime?
+  submittedAt               DateTime?
+  submissionReference       String?               @db.VarChar(160)
+  lateSubmission            Boolean?
+  assessmentReference       String?               @db.VarChar(160)
+  debtId                    String?               @db.VarChar(160)
+  assessedIncomeTax         Decimal               @default(0) @db.Decimal(14, 2)
+  taxPrepayment             Decimal               @default(0) @db.Decimal(14, 2)
+  otherAssessedAmounts      Decimal               @default(0) @db.Decimal(14, 2)
+  totalPayable              Decimal               @default(0) @db.Decimal(14, 2)
+  refundAmount              Decimal               @default(0) @db.Decimal(14, 2)
+  submissionNotes           String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  accountingOffice AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany          @relation(fields: [clientCompanyId], references: [id])
+  approvedBy       User?                  @relation("AnnualTaxReturnApprovedBy", fields: [approvedById], references: [id])
+  installments     AnnualTaxInstallment[]
+
+  @@unique([clientCompanyId, fiscalYear, kind, revision], map: "AnnualTaxReturn_client_year_kind_revision_key")
+  @@index([accountingOfficeId, status, fiscalYear], map: "AnnualTaxReturn_office_status_year_idx")
+  @@index([clientCompanyId, fiscalYear], map: "AnnualTaxReturn_client_year_idx")
+  @@index([approvedById], map: "AnnualTaxReturn_approved_by_idx")
+}
+
+model AnnualTaxInstallment {
+  id                String    @id @default(cuid())
+  annualTaxReturnId String
+  installmentNumber Int
+  dueDate           DateTime
+  amount            Decimal   @db.Decimal(14, 2)
+  paidAt            DateTime?
+  paymentReference  String?   @db.VarChar(160)
+  latePayment       Boolean?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  annualTaxReturn AnnualTaxReturn @relation(fields: [annualTaxReturnId], references: [id], onDelete: Cascade)
+
+  @@unique([annualTaxReturnId, installmentNumber], map: "AnnualTaxInstallment_return_number_key")
+  @@index([dueDate, paidAt], map: "AnnualTaxInstallment_due_paid_idx")
 }
 
 model PeriodCloseReview {
@@ -905,10 +1275,10 @@ model PeriodCloseReview {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
-  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
-  preparedBy       User?            @relation("PeriodClosePreparedBy", fields: [preparedById], references: [id])
-  approvedBy       User?            @relation("PeriodCloseApprovedBy", fields: [approvedById], references: [id])
+  accountingOffice      AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany         ClientCompany          @relation(fields: [clientCompanyId], references: [id])
+  preparedBy            User?                  @relation("PeriodClosePreparedBy", fields: [preparedById], references: [id])
+  approvedBy            User?                  @relation("PeriodCloseApprovedBy", fields: [approvedById], references: [id])
   declarationWorkpapers DeclarationWorkpaper[]
 
   @@unique([clientCompanyId, kind, periodYear, endMonth], map: "PeriodCloseReview_period_key")
@@ -979,24 +1349,24 @@ model FixedAssetDepreciationAccountingLink {
 }
 
 model TaxCalendarRule {
-  id                   String             @id @default(cuid())
-  accountingOfficeId   String
-  code                 String             @db.VarChar(80)
-  name                 String
-  obligationType       ObligationType
-  recurrence           ObligationRecurrence
-  dueMonthOffset       Int
-  dueDay               Int
-  applicableMonths     String?            @db.VarChar(80)
-  accountingCategory   String?            @db.VarChar(40)
-  vatRegime            String?            @db.VarChar(40)
-  sourceUrl            String?            @db.VarChar(2000)
-  notes                String?
-  isActive             Boolean            @default(true)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  id                 String               @id @default(cuid())
+  accountingOfficeId String
+  code               String               @db.VarChar(80)
+  name               String
+  obligationType     ObligationType
+  recurrence         ObligationRecurrence
+  dueMonthOffset     Int
+  dueDay             Int
+  applicableMonths   String?              @db.VarChar(80)
+  accountingCategory String?              @db.VarChar(40)
+  vatRegime          String?              @db.VarChar(40)
+  sourceUrl          String?              @db.VarChar(2000)
+  notes              String?
+  isActive           Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  accountingOffice AccountingOffice       @relation(fields: [accountingOfficeId], references: [id])
+  accountingOffice AccountingOffice      @relation(fields: [accountingOfficeId], references: [id])
   overrides        TaxCalendarOverride[]
 
   @@unique([accountingOfficeId, code])
@@ -1004,19 +1374,19 @@ model TaxCalendarRule {
 }
 
 model TaxCalendarOverride {
-  id                 String          @id @default(cuid())
+  id                 String   @id @default(cuid())
   accountingOfficeId String
   taxCalendarRuleId  String
   periodYear         Int
   periodMonth        Int
   dueDate            DateTime
-  sourceUrl          String?         @db.VarChar(2000)
+  sourceUrl          String?  @db.VarChar(2000)
   notes              String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
-  taxCalendarRule TaxCalendarRule   @relation(fields: [taxCalendarRuleId], references: [id], onDelete: Cascade)
+  taxCalendarRule  TaxCalendarRule  @relation(fields: [taxCalendarRuleId], references: [id], onDelete: Cascade)
 
   @@unique([taxCalendarRuleId, periodYear, periodMonth])
   @@index([accountingOfficeId, periodYear, periodMonth], map: "TaxCalOverride_office_period_idx")
@@ -1050,71 +1420,71 @@ model OfficeObligation {
 }
 
 model Document {
-  id                       String       @id @default(cuid())
-  accountingOfficeId       String
-  clientCompanyId          String
-  documentType             DocumentType
-  series                   String?
-  documentNumber           String
-  issueDate                DateTime
-  counterpartyName         String?
-  counterpartyVatNumber    String?      @db.VarChar(20)
-  movementCode             String?      @db.VarChar(80)
-  journalCode              String?      @db.VarChar(80)
-  netAmount                Decimal      @db.Decimal(12, 2)
-  vatAmount                Decimal      @db.Decimal(12, 2)
-  totalAmount              Decimal      @db.Decimal(12, 2)
-  vatCategory              String
-  paymentMethodType        Int          @default(3)
-  vatExemptionCategory     Int?
-  correlatedInvoiceMark    String?      @db.VarChar(40)
-  withheldAmount           Decimal      @default(0) @db.Decimal(12, 2)
-  withheldCategory         Int?
-  feesAmount               Decimal      @default(0) @db.Decimal(12, 2)
-  feesCategory             Int?
-  stampDutyAmount          Decimal      @default(0) @db.Decimal(12, 2)
-  stampDutyCategory        Int?
-  otherTaxesAmount         Decimal      @default(0) @db.Decimal(12, 2)
-  otherTaxesCategory       Int?
-  deductionsAmount         Decimal      @default(0) @db.Decimal(12, 2)
-  importBatchId            String?
-  replacesDocumentId       String?
-  correctsDocumentId       String?
-  myDataStatus             MyDataStatus @default(DRAFT)
-  myDataMark               String?
-  myDataUid                String?
-  myDataQrUrl              String?
-  myDataClassificationMark String?      @db.VarChar(40)
-  myDataCancellationMark   String?      @db.VarChar(40)
-  myDataCancelledAt        DateTime?
-  myDataXmlPreview         String?      @db.LongText
-  classificationStatus     String?
+  id                                  String                              @id @default(cuid())
+  accountingOfficeId                  String
+  clientCompanyId                     String
+  documentType                        DocumentType
+  series                              String?
+  documentNumber                      String
+  issueDate                           DateTime
+  counterpartyName                    String?
+  counterpartyVatNumber               String?                             @db.VarChar(20)
+  movementCode                        String?                             @db.VarChar(80)
+  journalCode                         String?                             @db.VarChar(80)
+  netAmount                           Decimal                             @db.Decimal(12, 2)
+  vatAmount                           Decimal                             @db.Decimal(12, 2)
+  totalAmount                         Decimal                             @db.Decimal(12, 2)
+  vatCategory                         String
+  paymentMethodType                   Int                                 @default(3)
+  vatExemptionCategory                Int?
+  correlatedInvoiceMark               String?                             @db.VarChar(40)
+  withheldAmount                      Decimal                             @default(0) @db.Decimal(12, 2)
+  withheldCategory                    Int?
+  feesAmount                          Decimal                             @default(0) @db.Decimal(12, 2)
+  feesCategory                        Int?
+  stampDutyAmount                     Decimal                             @default(0) @db.Decimal(12, 2)
+  stampDutyCategory                   Int?
+  otherTaxesAmount                    Decimal                             @default(0) @db.Decimal(12, 2)
+  otherTaxesCategory                  Int?
+  deductionsAmount                    Decimal                             @default(0) @db.Decimal(12, 2)
+  importBatchId                       String?
+  replacesDocumentId                  String?
+  correctsDocumentId                  String?
+  myDataStatus                        MyDataStatus                        @default(DRAFT)
+  myDataMark                          String?
+  myDataUid                           String?
+  myDataQrUrl                         String?
+  myDataClassificationMark            String?                             @db.VarChar(40)
+  myDataCancellationMark              String?                             @db.VarChar(40)
+  myDataCancelledAt                   DateTime?
+  myDataXmlPreview                    String?                             @db.LongText
+  classificationStatus                String?
   expenseClassificationApprovalStatus ExpenseClassificationApprovalStatus @default(NOT_REQUESTED)
   expenseClassificationApprovedById   String?
   expenseClassificationApprovedAt     DateTime?
-  expenseClassificationApprovalNotes  String? @db.VarChar(500)
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
-  deletedAt                DateTime?
+  expenseClassificationApprovalNotes  String?                             @db.VarChar(500)
+  createdAt                           DateTime                            @default(now())
+  updatedAt                           DateTime                            @updatedAt
+  deletedAt                           DateTime?
 
-  accountingOffice      AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
-  clientCompany         ClientCompany            @relation(fields: [clientCompanyId], references: [id])
-  importBatch           ImportBatch?             @relation(fields: [importBatchId], references: [id])
-  transmissionAttempts  TransmissionAttempt[]
-  lines                 DocumentLine[]
-  payments              DocumentPayment[]
-  accountingLinks       DocumentAccountingLink[]
-  myDataSnapshotMatches MyDataSnapshot[]         @relation("MyDataSnapshotMatchedDocument")
-  replacesDocument     Document?                 @relation("DocumentReplacement", fields: [replacesDocumentId], references: [id])
-  replacedByDocuments  Document[]                @relation("DocumentReplacement")
-  correctsDocument     Document?                 @relation("DocumentCorrection", fields: [correctsDocumentId], references: [id])
-  correctedByDocuments Document[]                @relation("DocumentCorrection")
-  expenseClassificationApprovedBy User?          @relation("ExpenseClassificationApprovedBy", fields: [expenseClassificationApprovedById], references: [id])
+  accountingOffice                AccountingOffice         @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany                   ClientCompany            @relation(fields: [clientCompanyId], references: [id])
+  importBatch                     ImportBatch?             @relation(fields: [importBatchId], references: [id])
+  transmissionAttempts            TransmissionAttempt[]
+  lines                           DocumentLine[]
+  payments                        DocumentPayment[]
+  accountingLinks                 DocumentAccountingLink[]
+  myDataSnapshotMatches           MyDataSnapshot[]         @relation("MyDataSnapshotMatchedDocument")
+  replacesDocument                Document?                @relation("DocumentReplacement", fields: [replacesDocumentId], references: [id])
+  replacedByDocuments             Document[]               @relation("DocumentReplacement")
+  correctsDocument                Document?                @relation("DocumentCorrection", fields: [correctsDocumentId], references: [id])
+  correctedByDocuments            Document[]               @relation("DocumentCorrection")
+  expenseClassificationApprovedBy User?                    @relation("ExpenseClassificationApprovedBy", fields: [expenseClassificationApprovedById], references: [id])
 
-  @@index([accountingOfficeId, clientCompanyId, issueDate])
-  @@index([accountingOfficeId, myDataStatus])
   @@unique([clientCompanyId, myDataMark], map: "Document_client_mydata_mark_key")
   @@unique([clientCompanyId, myDataUid], map: "Document_client_mydata_uid_key")
+  @@index([accountingOfficeId, clientCompanyId, issueDate])
+  @@index([accountingOfficeId, myDataStatus])
   @@index([myDataClassificationMark])
   @@index([myDataCancellationMark])
   @@index([accountingOfficeId, expenseClassificationApprovalStatus])
@@ -1149,36 +1519,36 @@ model DocumentPayment {
 }
 
 model DocumentLine {
-  id                           String   @id @default(cuid())
-  documentId                   String
-  lineNumber                   Int
-  itemCode                     String?  @db.VarChar(50)
-  description                  String?  @db.VarChar(300)
-  quantity                     Decimal? @db.Decimal(14, 3)
-  measurementUnit              Int?
-  unitPrice                    Decimal? @db.Decimal(12, 4)
-  discountAmount               Decimal  @default(0) @db.Decimal(12, 2)
-  discountOption               Boolean?
-  netAmount                    Decimal  @db.Decimal(12, 2)
-  vatAmount                    Decimal  @db.Decimal(12, 2)
-  vatCategory                  String   @db.VarChar(40)
-  vatExemptionCategory         Int?
-  withheldAmount               Decimal  @default(0) @db.Decimal(12, 2)
-  withheldCategory             Int?
-  feesAmount                   Decimal  @default(0) @db.Decimal(12, 2)
-  feesCategory                 Int?
-  stampDutyAmount              Decimal  @default(0) @db.Decimal(12, 2)
-  stampDutyCategory            Int?
-  otherTaxesAmount             Decimal  @default(0) @db.Decimal(12, 2)
-  otherTaxesCategory           Int?
-  deductionsAmount             Decimal  @default(0) @db.Decimal(12, 2)
-  incomeClassificationType     String?  @db.VarChar(40)
-  incomeClassificationCategory String?  @db.VarChar(40)
-  expenseClassificationType    String?  @db.VarChar(40)
-  expenseClassificationCategory String? @db.VarChar(40)
-  vatClassificationType        String?  @db.VarChar(40)
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  id                            String   @id @default(cuid())
+  documentId                    String
+  lineNumber                    Int
+  itemCode                      String?  @db.VarChar(50)
+  description                   String?  @db.VarChar(300)
+  quantity                      Decimal? @db.Decimal(14, 3)
+  measurementUnit               Int?
+  unitPrice                     Decimal? @db.Decimal(12, 4)
+  discountAmount                Decimal  @default(0) @db.Decimal(12, 2)
+  discountOption                Boolean?
+  netAmount                     Decimal  @db.Decimal(12, 2)
+  vatAmount                     Decimal  @db.Decimal(12, 2)
+  vatCategory                   String   @db.VarChar(40)
+  vatExemptionCategory          Int?
+  withheldAmount                Decimal  @default(0) @db.Decimal(12, 2)
+  withheldCategory              Int?
+  feesAmount                    Decimal  @default(0) @db.Decimal(12, 2)
+  feesCategory                  Int?
+  stampDutyAmount               Decimal  @default(0) @db.Decimal(12, 2)
+  stampDutyCategory             Int?
+  otherTaxesAmount              Decimal  @default(0) @db.Decimal(12, 2)
+  otherTaxesCategory            Int?
+  deductionsAmount              Decimal  @default(0) @db.Decimal(12, 2)
+  incomeClassificationType      String?  @db.VarChar(40)
+  incomeClassificationCategory  String?  @db.VarChar(40)
+  expenseClassificationType     String?  @db.VarChar(40)
+  expenseClassificationCategory String?  @db.VarChar(40)
+  vatClassificationType         String?  @db.VarChar(40)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -1222,10 +1592,10 @@ model MyDataSnapshot {
   source                MyDataSyncSource
   reconciliationStatus  MyDataReconciliationStatus
   reconciliationIssues  Json?
-  reviewStatus           MyDataSnapshotReviewStatus @default(PENDING)
-  reviewedById           String?
-  reviewedAt             DateTime?
-  reviewNotes            String?
+  reviewStatus          MyDataSnapshotReviewStatus @default(PENDING)
+  reviewedById          String?
+  reviewedAt            DateTime?
+  reviewNotes           String?
   mark                  String                     @db.VarChar(40)
   uid                   String?                    @db.VarChar(120)
   qrUrl                 String?
@@ -1293,4 +1663,350 @@ model AuditLog {
 
   @@index([accountingOfficeId, entityType, entityId])
   @@index([userId])
+}
+
+model PayrollEmployerSettings {
+  id                     String   @id @default(cuid())
+  accountingOfficeId     String
+  clientCompanyId        String   @unique
+  employerRegistryNumber String   @db.VarChar(10)
+  submissionOfficeCode   String   @db.VarChar(10)
+  submissionOfficeName   String   @db.VarChar(50)
+  street                 String   @db.VarChar(50)
+  streetNumber           String   @db.VarChar(10)
+  postalCode             String   @db.VarChar(5)
+  city                   String   @db.VarChar(30)
+  efkaPaymentRf          String?  @db.VarChar(23)
+  tekaPaymentRf          String?  @db.VarChar(25)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+
+  @@index([accountingOfficeId, clientCompanyId], map: "PayrollEmployerSettings_office_client_idx")
+}
+
+model PayrollEmployee {
+  id                          String                @id @default(cuid())
+  accountingOfficeId          String
+  clientCompanyId             String
+  code                        String                @db.VarChar(40)
+  status                      PayrollEmployeeStatus @default(ACTIVE)
+  lastName                    String                @db.VarChar(50)
+  firstName                   String                @db.VarChar(30)
+  fatherName                  String                @db.VarChar(30)
+  motherName                  String                @db.VarChar(30)
+  birthDate                   DateTime
+  afm                         String                @db.VarChar(9)
+  amka                        String                @db.VarChar(11)
+  insuranceRegistryNumber     String                @db.VarChar(9)
+  dependentChildren           Int                   @default(0)
+  recognizedPriorServiceYears Int                   @default(0)
+  tekaInsured                 Boolean               @default(false)
+  email                       String?
+  phone                       String?
+  iban                        String?               @db.VarChar(34)
+  notes                       String?
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+
+  accountingOffice    AccountingOffice           @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany       ClientCompany              @relation(fields: [clientCompanyId], references: [id])
+  contracts           PayrollContract[]
+  payrollEntries      PayrollEntry[]
+  payrollEvents       PayrollEvent[]
+  payrollLeaves       PayrollLeave[]
+  payrollTerminations PayrollTermination[]
+  erganiDeclarations  PayrollErganiDeclaration[]
+
+  @@unique([clientCompanyId, code], map: "PayrollEmployee_client_code_key")
+  @@unique([clientCompanyId, amka], map: "PayrollEmployee_client_amka_key")
+  @@index([accountingOfficeId, clientCompanyId, status], map: "PayrollEmployee_office_client_status_idx")
+}
+
+model PayrollContract {
+  id                        String                  @id @default(cuid())
+  accountingOfficeId        String
+  clientCompanyId           String
+  employeeId                String
+  startDate                 DateTime
+  endDate                   DateTime?
+  compensationType          PayrollCompensationType
+  monthlySalary             Decimal?                @db.Decimal(12, 2)
+  dailyWage                 Decimal?                @db.Decimal(12, 2)
+  statutoryMonthlySalary    Decimal?                @db.Decimal(12, 2)
+  statutoryDailyWage        Decimal?                @db.Decimal(12, 2)
+  fullTime                  Boolean                 @default(true)
+  weeklySystem              PayrollWeeklySystem     @default(FIVE_DAY)
+  weeklyHours               Decimal                 @default(40) @db.Decimal(5, 2)
+  workDaysPerWeek           Int                     @default(5)
+  workWeekdays              String                  @default("1,2,3,4,5") @db.VarChar(20)
+  dailyStartTime            String                  @default("09:00") @db.VarChar(5)
+  dailyEndTime              String                  @default("17:00") @db.VarChar(5)
+  breakMinutes              Int                     @default(0)
+  breakWithinWorkingTime    Boolean                 @default(false)
+  digitalCardEnabled        Boolean                 @default(false)
+  flexibleArrivalMinutes    Int                     @default(0)
+  apdBranchNumber           Int                     @default(0)
+  apdKad                    String                  @db.VarChar(4)
+  apdSpecialtyCode          String                  @db.VarChar(6)
+  apdSpecialInsuranceCase   String                  @default("00") @db.VarChar(2)
+  apdCoveragePackageCode    String                  @default("101") @db.VarChar(4)
+  externalSupplementaryFund String                  @default("00") @db.VarChar(2)
+  externalHealthFund        String                  @default("00") @db.VarChar(2)
+  employeeContributionRate  Decimal                 @default(13.370) @db.Decimal(6, 3)
+  employerContributionRate  Decimal                 @default(21.790) @db.Decimal(6, 3)
+  notes                     String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  accountingOffice   AccountingOffice           @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany      ClientCompany              @relation(fields: [clientCompanyId], references: [id])
+  employee           PayrollEmployee            @relation(fields: [employeeId], references: [id])
+  payrollEntries     PayrollEntry[]
+  payrollEvents      PayrollEvent[]
+  payrollTermination PayrollTermination?
+  erganiDeclarations PayrollErganiDeclaration[]
+
+  @@unique([employeeId, startDate], map: "PayrollContract_employee_start_key")
+  @@index([accountingOfficeId, clientCompanyId, startDate, endDate], map: "PayrollContract_office_client_dates_idx")
+}
+
+model PayrollPeriod {
+  id                            String              @id @default(cuid())
+  accountingOfficeId            String
+  clientCompanyId               String
+  periodYear                    Int
+  periodMonth                   Int
+  declarationType               ApdDeclarationType  @default(NORMAL)
+  status                        PayrollPeriodStatus @default(DRAFT)
+  totalGross                    Decimal             @default(0) @db.Decimal(14, 2)
+  totalEmployeeContributions    Decimal             @default(0) @db.Decimal(14, 2)
+  totalEmployerContributions    Decimal             @default(0) @db.Decimal(14, 2)
+  totalWithholdingTax           Decimal             @default(0) @db.Decimal(14, 2)
+  totalNet                      Decimal             @default(0) @db.Decimal(14, 2)
+  approvedById                  String?
+  calculatedAt                  DateTime?
+  approvedAt                    DateTime?
+  paidAt                        DateTime?
+  paymentDate                   DateTime?
+  apdSubmissionDeadline         DateTime?
+  apdSubmittedAt                DateTime?
+  apdProtocol                   String?             @db.VarChar(100)
+  apdLateSubmission             Boolean             @default(false)
+  contributionsPaymentDeadline  DateTime?
+  contributionsPaidAt           DateTime?
+  contributionsPaymentDate      DateTime?
+  contributionsPaymentReference String?             @db.VarChar(100)
+  contributionsLatePayment      Boolean             @default(false)
+  tekaContributionAmount        Decimal             @default(0) @db.Decimal(14, 2)
+  tekaSubmittedAt               DateTime?
+  tekaProtocol                  String?             @db.VarChar(100)
+  tekaLateSubmission            Boolean             @default(false)
+  tekaPaymentDate               DateTime?
+  tekaPaymentReference          String?             @db.VarChar(100)
+  tekaLatePayment               Boolean             @default(false)
+  fmySubmissionDeadline         DateTime?
+  fmySubmittedAt                DateTime?
+  fmyProtocol                   String?             @db.VarChar(100)
+  fmyDebtId                     String?             @db.VarChar(100)
+  fmyLateSubmission             Boolean             @default(false)
+  fmyPaidAt                     DateTime?
+  fmyPaymentDate                DateTime?
+  fmyPaymentReference           String?             @db.VarChar(100)
+  fmyLatePayment                Boolean             @default(false)
+  notes                         String?
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  approvedBy       User?            @relation("PayrollPeriodApprovedBy", fields: [approvedById], references: [id])
+  entries          PayrollEntry[]
+
+  @@unique([clientCompanyId, periodYear, periodMonth, declarationType], map: "PayrollPeriod_client_period_type_key")
+  @@index([accountingOfficeId, periodYear, periodMonth, status], map: "PayrollPeriod_office_period_status_idx")
+  @@index([approvedById], map: "PayrollPeriod_approved_by_idx")
+}
+
+model PayrollEntry {
+  id                    String   @id @default(cuid())
+  accountingOfficeId    String
+  clientCompanyId       String
+  payrollPeriodId       String
+  employeeId            String
+  contractId            String
+  payrollEventId        String?
+  entryKey              String   @db.VarChar(191)
+  employmentFrom        DateTime
+  employmentTo          DateTime
+  insuranceDays         Int
+  apdEarningsType       String   @default("001") @db.VarChar(3)
+  baseGross             Decimal  @db.Decimal(12, 2)
+  overtimeGross         Decimal  @default(0) @db.Decimal(12, 2)
+  nightPremiumGross     Decimal  @default(0) @db.Decimal(12, 2)
+  sundayHolidayGross    Decimal  @default(0) @db.Decimal(12, 2)
+  extraWorkGross        Decimal  @default(0) @db.Decimal(12, 2)
+  legalOvertimeGross    Decimal  @default(0) @db.Decimal(12, 2)
+  approvedOvertimeGross Decimal  @default(0) @db.Decimal(12, 2)
+  illegalOvertimeGross  Decimal  @default(0) @db.Decimal(12, 2)
+  partTimeExtraGross    Decimal  @default(0) @db.Decimal(12, 2)
+  leaveEmployerGross    Decimal  @default(0) @db.Decimal(12, 2)
+  bonusGross            Decimal  @default(0) @db.Decimal(12, 2)
+  otherGross            Decimal  @default(0) @db.Decimal(12, 2)
+  grossEarnings         Decimal  @db.Decimal(12, 2)
+  contributionBase      Decimal  @db.Decimal(12, 2)
+  contributionExempt    Decimal  @default(0) @db.Decimal(12, 2)
+  employeeContributions Decimal  @db.Decimal(12, 2)
+  employerContributions Decimal  @db.Decimal(12, 2)
+  taxableEarnings       Decimal  @db.Decimal(12, 2)
+  withholdingTax        Decimal  @db.Decimal(12, 2)
+  otherDeductions       Decimal  @default(0) @db.Decimal(12, 2)
+  netPayable            Decimal  @db.Decimal(12, 2)
+  calculationSnapshot   Json
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  payrollPeriod    PayrollPeriod    @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+  employee         PayrollEmployee  @relation(fields: [employeeId], references: [id])
+  contract         PayrollContract  @relation(fields: [contractId], references: [id])
+  payrollEvent     PayrollEvent?    @relation(fields: [payrollEventId], references: [id])
+
+  @@unique([payrollPeriodId, employeeId, entryKey], map: "PayrollEntry_period_employee_entry_key")
+  @@unique([payrollEventId], map: "PayrollEntry_event_key")
+  @@index([accountingOfficeId, clientCompanyId, employeeId], map: "PayrollEntry_office_client_employee_idx")
+}
+
+model PayrollEvent {
+  id                          String                        @id @default(cuid())
+  accountingOfficeId          String
+  clientCompanyId             String
+  employeeId                  String
+  contractId                  String
+  periodYear                  Int
+  periodMonth                 Int
+  type                        PayrollEventType
+  dateFrom                    DateTime?
+  dateTo                      DateTime?
+  insuranceDays               Int                           @default(0)
+  leaveDays                   Int?
+  efkaBenefit                 Decimal                       @default(0) @db.Decimal(12, 2)
+  sicknessBenefitStatus       PayrollSicknessBenefitStatus?
+  medicalCertificateReference String?                       @db.VarChar(100)
+  grossAmount                 Decimal                       @db.Decimal(12, 2)
+  autoCalculated              Boolean                       @default(false)
+  calculationDetails          Json?
+  notes                       String?
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  employee         PayrollEmployee  @relation(fields: [employeeId], references: [id])
+  contract         PayrollContract  @relation(fields: [contractId], references: [id])
+  payrollEntry     PayrollEntry?
+  payrollLeave     PayrollLeave?
+
+  @@index([accountingOfficeId, clientCompanyId, periodYear, periodMonth], map: "PayrollEvent_office_client_period_idx")
+  @@index([employeeId, type, periodYear], map: "PayrollEvent_employee_type_year_idx")
+}
+
+model PayrollLeave {
+  id                 String           @id @default(cuid())
+  accountingOfficeId String
+  clientCompanyId    String
+  employeeId         String
+  payrollEventId     String?          @unique
+  fiscalYear         Int
+  type               PayrollLeaveType
+  dateFrom           DateTime
+  dateTo             DateTime
+  workingDays        Decimal          @db.Decimal(5, 2)
+  paid               Boolean          @default(true)
+  paymentSource      PayrollLeavePaymentSource @default(EMPLOYER)
+  employerGrossAmount Decimal         @default(0) @db.Decimal(12, 2)
+  employeeRequestReference String?    @db.VarChar(191)
+  externalBenefitReference String?    @db.VarChar(191)
+  erganiProtocol     String?           @db.VarChar(100)
+  erganiSubmittedAt DateTime?
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  employee         PayrollEmployee  @relation(fields: [employeeId], references: [id])
+  payrollEvent     PayrollEvent?    @relation(fields: [payrollEventId], references: [id])
+
+  @@index([accountingOfficeId, clientCompanyId, fiscalYear], map: "PayrollLeave_office_client_year_idx")
+  @@index([employeeId, fiscalYear, type], map: "PayrollLeave_employee_year_type_idx")
+}
+
+model PayrollTermination {
+  id                     String                   @id @default(cuid())
+  accountingOfficeId     String
+  clientCompanyId        String
+  employeeId             String
+  contractId             String                   @unique
+  type                   PayrollTerminationType
+  status                 PayrollTerminationStatus @default(DRAFT)
+  terminationDate        DateTime
+  withNotice             Boolean                  @default(false)
+  noticeMonths           Int                      @default(0)
+  completedServiceYears  Int
+  regularMonthlyEarnings Decimal                  @db.Decimal(12, 2)
+  severanceMonths        Decimal                  @default(0) @db.Decimal(5, 2)
+  statutorySeverance     Decimal                  @default(0) @db.Decimal(12, 2)
+  severanceAmount        Decimal                  @default(0) @db.Decimal(12, 2)
+  calculationDetails     Json
+  paymentDate            DateTime?
+  paymentReference       String?                  @db.VarChar(100)
+  erganiProtocol         String?                  @db.VarChar(100)
+  erganiSubmittedAt      DateTime?
+  notes                  String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  employee         PayrollEmployee  @relation(fields: [employeeId], references: [id])
+  contract         PayrollContract  @relation(fields: [contractId], references: [id])
+
+  @@index([accountingOfficeId, clientCompanyId, terminationDate], map: "PayrollTermination_office_client_date_idx")
+  @@index([employeeId, status], map: "PayrollTermination_employee_status_idx")
+}
+
+model PayrollErganiDeclaration {
+  id                  String                         @id @default(cuid())
+  accountingOfficeId  String
+  clientCompanyId     String
+  employeeId          String
+  contractId          String
+  type                PayrollErganiDeclarationType
+  status              PayrollErganiDeclarationStatus @default(DRAFT)
+  effectiveAt         DateTime
+  deadlineAt          DateTime
+  erganiProtocol      String?                        @db.VarChar(100)
+  erganiSubmittedAt   DateTime?
+  acceptanceMethod    PayrollErganiAcceptanceMethod?
+  acceptanceReference String?                        @db.VarChar(191)
+  acceptedAt          DateTime?
+  lateSubmission      Boolean                        @default(false)
+  declarationSnapshot Json
+  notes               String?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  accountingOffice AccountingOffice @relation(fields: [accountingOfficeId], references: [id])
+  clientCompany    ClientCompany    @relation(fields: [clientCompanyId], references: [id])
+  employee         PayrollEmployee  @relation(fields: [employeeId], references: [id])
+  contract         PayrollContract  @relation(fields: [contractId], references: [id])
+
+  @@unique([accountingOfficeId, erganiProtocol], map: "PayrollErganiDeclaration_office_protocol_key")
+  @@index([accountingOfficeId, clientCompanyId, status, deadlineAt], map: "PayrollErganiDeclaration_office_client_status_deadline_idx")
+  @@index([employeeId, effectiveAt], map: "PayrollErganiDeclaration_employee_effective_idx")
+  @@index([contractId, status], map: "PayrollErganiDeclaration_contract_status_idx")
 }

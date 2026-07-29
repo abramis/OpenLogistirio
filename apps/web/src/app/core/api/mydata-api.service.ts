@@ -34,6 +34,8 @@ export interface SyncMyDataDocsResult {
 
 export interface MyDataEnvironmentInfo {
   environment: 'test' | 'production';
+  credentialsConfigured: boolean;
+  registryConfigured: boolean;
   productionReadEnabled: boolean;
   productionWriteEnabled: boolean;
 }
@@ -151,6 +153,7 @@ export interface MyDataPurchasePreview {
   mark: string;
   uid?: string | null;
   invoiceType?: string | null;
+  documentType: string;
   series?: string | null;
   documentNumber: string;
   issueDate?: string | null;

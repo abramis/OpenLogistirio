@@ -326,6 +326,21 @@ describe('MyDataMappingService', () => {
       new MyDataMappingService().mapPurchaseDocumentToExpenseClassificationXml(purchaseDocument),
     ).toThrow(BadRequestException);
   });
+
+  it('prepares receiver expense classification for a supplier credit note', () => {
+    const supplierCredit = {
+      ...document,
+      documentType: DocumentType.PURCHASE_CREDIT_NOTE,
+      myDataMark: '4000012346',
+    };
+
+    const xml = new MyDataMappingService().mapPurchaseDocumentToExpenseClassificationXml(
+      supplierCredit,
+    );
+
+    expect(xml).toContain('<invoiceMark>4000012346</invoiceMark>');
+    expect(xml).toContain('<ExpensesClassificationsDoc');
+  });
 });
 
 describe('MyDataService', () => {
@@ -353,6 +368,7 @@ describe('MyDataService', () => {
       upsert: jest.Mock;
       groupBy: jest.Mock;
       findMany: jest.Mock;
+      findFirst: jest.Mock;
     };
     transmissionAttempt: {
       create: jest.Mock;
@@ -401,6 +417,7 @@ describe('MyDataService', () => {
         upsert: jest.fn(),
         groupBy: jest.fn().mockResolvedValue([]),
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn(),
       },
       transmissionAttempt: {
         create: jest.fn().mockResolvedValue({ id: 'attempt-1' }),
@@ -460,6 +477,43 @@ describe('MyDataService', () => {
         status: TransmissionStatus.PREPARED,
       }),
     });
+  });
+
+  it('previews an incoming AADE 5.x document as a supplier credit note', async () => {
+    prisma.myDataSnapshot.findFirst.mockResolvedValue({
+      id: 'snapshot-credit-1',
+      accountingOfficeId: 'office-1',
+      clientCompanyId: 'company-1',
+      source: MyDataSyncSource.REQUEST_DOCS,
+      matchedDocumentId: null,
+      mark: '5000012345',
+      uid: 'credit-uid',
+      qrUrl: null,
+      invoiceType: '5.1',
+      series: 'PC',
+      documentNumber: '7',
+      issueDate: new Date('2026-07-10T00:00:00.000Z'),
+      issuerVatNumber: '123456789',
+      netAmount: new Prisma.Decimal('100.00'),
+      vatAmount: new Prisma.Decimal('24.00'),
+      totalAmount: new Prisma.Decimal('124.00'),
+      rawPayload: {
+        invoiceDetails: {
+          lineNumber: 1,
+          netValue: 100,
+          vatCategory: 1,
+          vatAmount: 24,
+        },
+        issuer: { name: 'Supplier SA', country: 'GR' },
+      },
+    });
+    prisma.document.findFirst.mockResolvedValue(null);
+
+    const result = await service.previewPurchaseFromSnapshot(tenant, 'snapshot-credit-1');
+
+    expect(result.documentType).toBe(DocumentType.PURCHASE_CREDIT_NOTE);
+    expect(result.totals).toEqual({ netAmount: 100, vatAmount: 24, totalAmount: 124 });
+    expect(result.canCreate).toBe(true);
   });
 
   it('sends through the mock provider and stores fake identifiers', async () => {

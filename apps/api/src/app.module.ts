@@ -23,6 +23,9 @@ import { PeriodClosesModule } from './period-closes/period-closes.module';
 import { SupportingDocumentsModule } from './supporting-documents/supporting-documents.module';
 import { DigitalMovementModule } from './digital-movement/digital-movement.module';
 import { SetupModule } from './setup/setup.module';
+import { PayrollModule } from './payroll/payroll.module';
+import { AnnualTaxModule } from './annual-tax/annual-tax.module';
+import { WithholdingTaxModule } from './withholding-tax/withholding-tax.module';
 
 @Module({
   imports: [
@@ -60,6 +63,9 @@ import { SetupModule } from './setup/setup.module';
     SupportingDocumentsModule,
     DigitalMovementModule,
     SetupModule,
+    PayrollModule,
+    AnnualTaxModule,
+    WithholdingTaxModule,
   ],
 })
 export class AppModule {}

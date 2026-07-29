@@ -1372,7 +1372,7 @@ export class MyDataService {
       });
     }
 
-    const { lines, totalAmount, payments, supplierName } = draft;
+    const { documentType, movementCode, lines, totalAmount, payments, supplierName } = draft;
     const issuer = findObjectValue(snapshot.rawPayload, 'issuer');
     const now = new Date();
 
@@ -1409,13 +1409,13 @@ export class MyDataService {
           data: {
             accountingOfficeId: tenant.accountingOfficeId,
             clientCompanyId: snapshot.clientCompanyId,
-            documentType: DocumentType.PURCHASE_INVOICE,
+            documentType,
             series: snapshot.series,
             documentNumber: snapshot.documentNumber,
             issueDate: snapshot.issueDate!,
             counterpartyName: counterparty.name,
             counterpartyVatNumber: snapshot.issuerVatNumber,
-            movementCode: 'PURCHASE_INVOICE',
+            movementCode,
             journalCode: 'PURCHASES',
             netAmount: snapshot.netAmount ?? 0,
             vatAmount: snapshot.vatAmount ?? 0,
@@ -1446,7 +1446,10 @@ export class MyDataService {
             reviewStatus: MyDataSnapshotReviewStatus.RESOLVED,
             reviewedById: tenant.userId,
             reviewedAt: now,
-            reviewNotes: 'Created purchase invoice from AADE snapshot after preview.',
+            reviewNotes:
+              documentType === DocumentType.PURCHASE_CREDIT_NOTE
+                ? 'Created supplier credit note from AADE snapshot after preview.'
+                : 'Created purchase invoice from AADE snapshot after preview.',
           },
         });
         await tx.auditLog.create({
@@ -1490,6 +1493,7 @@ export class MyDataService {
       mark: snapshot.mark,
       uid: snapshot.uid,
       invoiceType: snapshot.invoiceType,
+      documentType: draft.documentType,
       series: snapshot.series,
       documentNumber: snapshot.documentNumber,
       issueDate: snapshot.issueDate,
@@ -1516,11 +1520,6 @@ export class MyDataService {
     }
     if (snapshot.matchedDocumentId) {
       throw new BadRequestException('This AADE snapshot is already linked to an internal document.');
-    }
-    if (snapshot.invoiceType?.startsWith('5.')) {
-      throw new BadRequestException(
-        'Incoming credit notes require manual review until purchase credit notes have a separate internal document type.',
-      );
     }
     if (!snapshot.issueDate || !snapshot.issuerVatNumber) {
       throw new BadRequestException('AADE issue date and supplier VAT number are required.');
@@ -1552,7 +1551,22 @@ export class MyDataService {
     const supplierName =
       findFirstValue(issuer, ['name', 'legalName', 'branchName']) ??
       `Προμηθευτής ΑΦΜ ${snapshot.issuerVatNumber}`;
-    return { lines, totalAmount, payments, supplierName, possibleDuplicate };
+    const documentType = snapshot.invoiceType?.startsWith('5.')
+      ? DocumentType.PURCHASE_CREDIT_NOTE
+      : DocumentType.PURCHASE_INVOICE;
+    const movementCode =
+      documentType === DocumentType.PURCHASE_CREDIT_NOTE
+        ? 'PURCHASE_CREDIT_NOTE'
+        : 'PURCHASE_INVOICE';
+    return {
+      documentType,
+      movementCode,
+      lines,
+      totalAmount,
+      payments,
+      supplierName,
+      possibleDuplicate,
+    };
   }
 
   async matchSnapshot(tenant: TenantContext, snapshotId: string, dto: MatchMyDataSnapshotDto) {
@@ -1725,7 +1739,9 @@ export class MyDataService {
   async capabilities(tenant: TenantContext, documentId: string) {
     const document = await this.getTenantDocument(tenant, documentId);
     const supportsSendInvoices = this.supportsSendInvoices(document.documentType);
-    const supportsExpenseReceiver = document.documentType === DocumentType.PURCHASE_INVOICE;
+    const supportsExpenseReceiver =
+      document.documentType === DocumentType.PURCHASE_INVOICE ||
+      document.documentType === DocumentType.PURCHASE_CREDIT_NOTE;
     const alreadySent = document.myDataStatus === MyDataStatus.SENT;
     const alreadyCancelled = document.myDataStatus === MyDataStatus.CANCELLED;
     const failed = document.myDataStatus === MyDataStatus.FAILED;
@@ -2064,8 +2080,13 @@ export class MyDataService {
   }
 
   private ensurePurchaseInvoice(documentType: DocumentType): void {
-    if (documentType !== DocumentType.PURCHASE_INVOICE) {
-      throw new BadRequestException('This myDATA receiver flow supports purchase invoices only.');
+    if (
+      documentType !== DocumentType.PURCHASE_INVOICE &&
+      documentType !== DocumentType.PURCHASE_CREDIT_NOTE
+    ) {
+      throw new BadRequestException(
+        'This myDATA receiver flow supports purchase invoices and supplier credit notes only.',
+      );
     }
   }
 
@@ -2768,7 +2789,7 @@ function mapAadeInvoiceTypeToInternalDocumentType(
 
   if (source === MyDataSyncSource.REQUEST_DOCS) {
     if (invoiceType.startsWith('5.')) {
-      return DocumentType.CREDIT_NOTE;
+      return DocumentType.PURCHASE_CREDIT_NOTE;
     }
 
     return DocumentType.PURCHASE_INVOICE;

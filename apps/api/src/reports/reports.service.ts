@@ -67,7 +67,11 @@ export class ReportsService {
     for (const document of documents) {
       const period = document.issueDate.toISOString().slice(0, 7);
       const row = months.get(period) ?? createVatSummaryRow(period);
-      const sign = document.documentType === DocumentType.CREDIT_NOTE ? -1 : 1;
+      const sign =
+        document.documentType === DocumentType.CREDIT_NOTE ||
+        document.documentType === DocumentType.PURCHASE_CREDIT_NOTE
+        ? -1
+        : 1;
       const net = roundMoney(Number(document.netAmount) * sign);
       const vat = roundMoney(Number(document.vatAmount) * sign);
 
@@ -130,7 +134,8 @@ function isPurchaseDocument(document: {
 }): boolean {
   return (
     document.documentType === DocumentType.PURCHASE_INVOICE ||
-    document.movementCode === 'PURCHASE_INVOICE'
+    document.documentType === DocumentType.PURCHASE_CREDIT_NOTE ||
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.movementCode ?? '')
   );
 }
 

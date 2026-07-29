@@ -402,6 +402,19 @@ async function seedDefaultAccounting(clientCompanyId: string, accountingOfficeId
       '54.00',
       'DEBIT',
     ],
+    [
+      'PURCHASE_CREDIT_NOTE',
+      'Πιστωτικό προμηθευτή',
+      'PURCHASE_CREDIT_NOTE',
+      'PURCHASE_CREDIT_NOTE',
+      'PURCHASES',
+      '50.00',
+      'DEBIT',
+      '20.00',
+      'CREDIT',
+      '54.01',
+      'CREDIT',
+    ],
   ] as const;
 
   for (const [

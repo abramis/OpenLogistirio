@@ -115,6 +115,22 @@ export const routes: Routes = [
     canMatch: [authMatchGuard],
   },
   {
+    path: 'annual-tax',
+    loadComponent: () =>
+      import('./features/annual-tax/annual-tax-page.component').then(
+        (m) => m.AnnualTaxPageComponent,
+      ),
+    canMatch: [authMatchGuard],
+  },
+  {
+    path: 'payroll',
+    loadComponent: () =>
+      import('./features/payroll/payroll-page.component').then(
+        (m) => m.PayrollPageComponent,
+      ),
+    canMatch: [authMatchGuard],
+  },
+  {
     path: 'digital-movement',
     loadComponent: () =>
       import('./features/digital-movement/digital-movement-page.component').then(
@@ -126,6 +142,14 @@ export const routes: Routes = [
     path: 'imports',
     loadComponent: () =>
       import('./features/imports/imports-page.component').then((m) => m.ImportsPageComponent),
+    canMatch: [authMatchGuard],
+  },
+  {
+    path: 'withholding-tax',
+    loadComponent: () =>
+      import('./features/withholding-tax/withholding-tax-page.component').then(
+        (m) => m.WithholdingTaxPageComponent,
+      ),
     canMatch: [authMatchGuard],
   },
   {

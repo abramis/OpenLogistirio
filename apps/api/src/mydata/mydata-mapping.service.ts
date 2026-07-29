@@ -89,9 +89,12 @@ export class MyDataMappingService {
   }
 
   mapPurchaseDocumentToExpenseClassificationXml(document: MappableDocument): string {
-    if (document.documentType !== DocumentType.PURCHASE_INVOICE) {
+    if (
+      document.documentType !== DocumentType.PURCHASE_INVOICE &&
+      document.documentType !== DocumentType.PURCHASE_CREDIT_NOTE
+    ) {
       throw new BadRequestException(
-        'Expense classification preparation supports purchase invoices only.',
+        'Expense classification preparation supports purchase invoices and supplier credit notes only.',
       );
     }
 
@@ -318,7 +321,7 @@ function mapDocumentTypeToAadeInvoiceType(
   }
 
   throw new BadRequestException(
-    'AADE SendInvoices is only for issued sales documents. Purchase invoices require the expenses/receiver myDATA flow, which is not implemented yet.',
+    'AADE SendInvoices is only for issued sales documents. Purchase documents use the receiver expense-classification flow.',
   );
 }
 

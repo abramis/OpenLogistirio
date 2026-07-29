@@ -57,8 +57,14 @@ const commonItems: ClientSetupTemplateItem[] = [
   {
     kind: 'MOVEMENT_CODE',
     code: 'CREDIT_NOTE',
-    name: 'Πιστωτικό τιμολόγιο',
+    name: 'Πιστωτικό πώλησης',
     metadata: { documentType: 'CREDIT_NOTE', affectsVatBook: true },
+  },
+  {
+    kind: 'MOVEMENT_CODE',
+    code: 'PURCHASE_CREDIT_NOTE',
+    name: 'Πιστωτικό προμηθευτή',
+    metadata: { documentType: 'PURCHASE_CREDIT_NOTE', affectsVatBook: true },
   },
   {
     kind: 'JOURNAL',
@@ -109,6 +115,17 @@ const commonItems: ClientSetupTemplateItem[] = [
     },
   },
   {
+    kind: 'POSTING_RULE',
+    code: 'PURCHASE_CREDIT_NOTE',
+    name: 'Άρθρωση πιστωτικού προμηθευτή',
+    metadata: {
+      movementCode: 'PURCHASE_CREDIT_NOTE',
+      counterpartyAccountCode: '50.00',
+      netAccountCode: '20.00',
+      vatAccountCode: '54.01',
+    },
+  },
+  {
     kind: 'VAT_SETUP',
     code: 'VAT_NORMAL_24',
     name: 'Κανονικός συντελεστής ΦΠΑ 24%',
@@ -140,6 +157,20 @@ const commonItems: ClientSetupTemplateItem[] = [
       isActive: true,
     },
   },
+  {
+    kind: 'MYDATA_CLASSIFICATION_PROFILE',
+    code: 'EXPENSE_PURCHASE_CREDIT_DEFAULT',
+    name: 'Προεπιλεγμένα έξοδα πιστωτικών προμηθευτών',
+    description:
+      'Χρησιμοποιείται στον χαρακτηρισμό εξόδου για εισερχόμενα πιστωτικά προμηθευτών.',
+    metadata: {
+      documentType: 'PURCHASE_CREDIT_NOTE',
+      expenseClassificationType: 'E3_102_001',
+      expenseClassificationCategory: 'category2_4',
+      priority: 0,
+      isActive: true,
+    },
+  },
   ...[
     ['VAT_24', 'VAT_361'],
     ['VAT_13', 'VAT_362'],
@@ -153,6 +184,25 @@ const commonItems: ClientSetupTemplateItem[] = [
     name: `Χαρακτηρισμός ΦΠΑ εξόδων ${vatCategory.replace('VAT_', '')}%`,
     metadata: {
       documentType: 'PURCHASE_INVOICE',
+      vatCategory,
+      vatClassificationType,
+      priority: 10,
+      isActive: true,
+    },
+  })),
+  ...[
+    ['VAT_24', 'VAT_361'],
+    ['VAT_13', 'VAT_362'],
+    ['VAT_6', 'VAT_363'],
+    ['VAT_17', 'VAT_364'],
+    ['VAT_9', 'VAT_365'],
+    ['VAT_4', 'VAT_366'],
+  ].map(([vatCategory, vatClassificationType]) => ({
+    kind: 'MYDATA_CLASSIFICATION_PROFILE',
+    code: `EXPENSE_CREDIT_${vatCategory}`,
+    name: `Χαρακτηρισμός ΦΠΑ πιστωτικού εξόδων ${vatCategory.replace('VAT_', '')}%`,
+    metadata: {
+      documentType: 'PURCHASE_CREDIT_NOTE',
       vatCategory,
       vatClassificationType,
       priority: 10,

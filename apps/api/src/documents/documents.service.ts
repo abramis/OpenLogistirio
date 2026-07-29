@@ -146,7 +146,7 @@ export class DocumentsService {
   }
 
   private validateDocumentFields(dto: CreateDocumentDto): void {
-    if (dto.documentType !== DocumentType.CREDIT_NOTE && dto.correlatedInvoiceMark) {
+    if (!isCreditDocumentType(dto.documentType) && dto.correlatedInvoiceMark) {
       throw new BadRequestException('A correlated invoice MARK is allowed only for credit notes.');
     }
     if (dto.replacesDocumentId && dto.correctsDocumentId) {
@@ -219,8 +219,25 @@ export class DocumentsService {
         correlatedInvoiceMark: dto.correlatedInvoiceMark,
       };
     }
-    if (dto.documentType !== DocumentType.CREDIT_NOTE) {
+    if (!isCreditDocumentType(dto.documentType)) {
       throw new BadRequestException('Only a credit note can correct an original document.');
+    }
+    if (
+      dto.documentType === DocumentType.PURCHASE_CREDIT_NOTE &&
+      relatedDocument.documentType !== DocumentType.PURCHASE_INVOICE
+    ) {
+      throw new BadRequestException(
+        'A supplier credit note can correct only a purchase invoice.',
+      );
+    }
+    if (
+      dto.documentType === DocumentType.CREDIT_NOTE &&
+      relatedDocument.documentType !== DocumentType.SALES_INVOICE &&
+      relatedDocument.documentType !== DocumentType.RETAIL_RECEIPT
+    ) {
+      throw new BadRequestException(
+        'A sales credit note can correct only a sales invoice or retail receipt.',
+      );
     }
     if (!relatedDocument.myDataMark) {
       throw new BadRequestException('The corrected document requires an AADE MARK.');
@@ -552,6 +569,7 @@ function defaultMovementCode(documentType: DocumentType): string | undefined {
     SALES_INVOICE: 'SALE_INVOICE',
     PURCHASE_INVOICE: 'PURCHASE_INVOICE',
     CREDIT_NOTE: 'CREDIT_NOTE',
+    PURCHASE_CREDIT_NOTE: 'PURCHASE_CREDIT_NOTE',
     RETAIL_RECEIPT: 'SALE_INVOICE',
   };
 
@@ -563,6 +581,7 @@ function defaultJournalCode(documentType: DocumentType): string | undefined {
     SALES_INVOICE: 'SALES',
     PURCHASE_INVOICE: 'PURCHASES',
     CREDIT_NOTE: 'SALES',
+    PURCHASE_CREDIT_NOTE: 'PURCHASES',
     RETAIL_RECEIPT: 'SALES',
   };
 
@@ -571,7 +590,12 @@ function defaultJournalCode(documentType: DocumentType): string | undefined {
 
 function isBuiltInFallbackSetupCode(kind: string, code: string): boolean {
   if (kind === 'MOVEMENT_CODE') {
-    return ['SALE_INVOICE', 'PURCHASE_INVOICE', 'CREDIT_NOTE'].includes(code);
+    return [
+      'SALE_INVOICE',
+      'PURCHASE_INVOICE',
+      'CREDIT_NOTE',
+      'PURCHASE_CREDIT_NOTE',
+    ].includes(code);
   }
 
   if (kind === 'JOURNAL') {
@@ -579,6 +603,13 @@ function isBuiltInFallbackSetupCode(kind: string, code: string): boolean {
   }
 
   return false;
+}
+
+function isCreditDocumentType(documentType: DocumentType): boolean {
+  return (
+    documentType === DocumentType.CREDIT_NOTE ||
+    documentType === DocumentType.PURCHASE_CREDIT_NOTE
+  );
 }
 
 function roundMoney(value: number): number {

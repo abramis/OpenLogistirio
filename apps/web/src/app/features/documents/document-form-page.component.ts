@@ -60,7 +60,8 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
               <select formControlName="documentType">
                 <option value="SALES_INVOICE">Τιμολόγιο πώλησης</option>
                 <option value="PURCHASE_INVOICE">Τιμολόγιο αγοράς / δαπάνη</option>
-                <option value="CREDIT_NOTE">Πιστωτικό</option>
+                <option value="CREDIT_NOTE">Πιστωτικό πώλησης</option>
+                <option value="PURCHASE_CREDIT_NOTE">Πιστωτικό προμηθευτή</option>
                 <option value="RETAIL_RECEIPT">Απόδειξη λιανικής</option>
               </select>
             </label>
@@ -127,7 +128,13 @@ import { DocumentsApiService } from '../../core/api/documents-api.service';
               </select>
             </label>
 
-            <label class="field wide" *ngIf="form.controls.documentType.value === 'CREDIT_NOTE'">
+            <label
+              class="field wide"
+              *ngIf="
+                form.controls.documentType.value === 'CREDIT_NOTE' ||
+                form.controls.documentType.value === 'PURCHASE_CREDIT_NOTE'
+              "
+            >
               <span class="field-label">MARK αρχικού παραστατικού</span>
               <input
                 formControlName="correlatedInvoiceMark"
@@ -878,7 +885,7 @@ export class DocumentFormPageComponent implements OnInit {
     });
     this.form.controls.documentType.valueChanges.subscribe((documentType) => {
       this.applyDefaultSetupOptions();
-      if (documentType !== 'CREDIT_NOTE') {
+      if (!['CREDIT_NOTE', 'PURCHASE_CREDIT_NOTE'].includes(documentType)) {
         this.form.controls.correlatedInvoiceMark.setValue('');
       }
     });
@@ -1400,6 +1407,7 @@ function defaultMovementCode(documentType: string): string {
     SALES_INVOICE: 'SALE_INVOICE',
     PURCHASE_INVOICE: 'PURCHASE_INVOICE',
     CREDIT_NOTE: 'CREDIT_NOTE',
+    PURCHASE_CREDIT_NOTE: 'PURCHASE_CREDIT_NOTE',
     RETAIL_RECEIPT: 'SALE_INVOICE',
   };
 
@@ -1411,6 +1419,7 @@ function defaultJournalCode(documentType: string): string {
     SALES_INVOICE: 'SALES',
     PURCHASE_INVOICE: 'PURCHASES',
     CREDIT_NOTE: 'SALES',
+    PURCHASE_CREDIT_NOTE: 'PURCHASES',
     RETAIL_RECEIPT: 'SALES',
   };
 
@@ -1418,7 +1427,9 @@ function defaultJournalCode(documentType: string): string {
 }
 
 function defaultCounterpartyType(documentType: string): string {
-  return documentType === 'PURCHASE_INVOICE' ? 'SUPPLIER' : 'CUSTOMER';
+  return ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(documentType)
+    ? 'SUPPLIER'
+    : 'CUSTOMER';
 }
 
 function defaultVatSetupOptions(): ClientSetupItem[] {

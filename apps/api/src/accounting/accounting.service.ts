@@ -947,11 +947,18 @@ export class AccountingService {
         continue;
       }
 
-      const sign = document.documentType === DocumentType.CREDIT_NOTE ? -1 : 1;
+      const sign =
+        document.documentType === DocumentType.CREDIT_NOTE ||
+        document.documentType === DocumentType.PURCHASE_CREDIT_NOTE
+        ? -1
+        : 1;
       const net = roundMoney(Number(document.netAmount) * sign);
       const vat = roundMoney(Number(document.vatAmount) * sign);
 
-      if (document.documentType === DocumentType.PURCHASE_INVOICE) {
+      if (
+        document.documentType === DocumentType.PURCHASE_INVOICE ||
+        document.documentType === DocumentType.PURCHASE_CREDIT_NOTE
+      ) {
         row.documents.purchasesNet = roundMoney(row.documents.purchasesNet + net);
         row.documents.inputVat = roundMoney(row.documents.inputVat + vat);
       } else {
@@ -1540,6 +1547,19 @@ const DEFAULT_DOCUMENT_POSTING_RULES: DefaultDocumentPostingRule[] = [
     vatAccountCode: '54.00',
     vatSide: NormalBalance.DEBIT,
   },
+  {
+    code: 'PURCHASE_CREDIT_NOTE',
+    name: 'Πιστωτικό προμηθευτή',
+    documentType: DocumentType.PURCHASE_CREDIT_NOTE,
+    movementCode: 'PURCHASE_CREDIT_NOTE',
+    journalCode: 'PURCHASES',
+    counterpartyAccountCode: '50.00',
+    counterpartySide: NormalBalance.DEBIT,
+    netAccountCode: '20.00',
+    netSide: NormalBalance.CREDIT,
+    vatAccountCode: '54.01',
+    vatSide: NormalBalance.CREDIT,
+  },
 ];
 
 interface DefaultAccount {
@@ -1746,6 +1766,7 @@ function documentDescription(document: PostingDocument): string {
     SALES_INVOICE: 'Τιμολόγιο πώλησης',
     PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
     CREDIT_NOTE: 'Πιστωτικό',
+    PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
     RETAIL_RECEIPT: 'Απόδειξη λιανικής',
   };
 

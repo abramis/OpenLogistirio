@@ -110,6 +110,7 @@ describe('DocumentsService myDATA field validation', () => {
     prisma.document.findFirst.mockResolvedValue({
       id: 'original-1',
       clientCompanyId: 'company-1',
+      documentType: DocumentType.SALES_INVOICE,
       myDataStatus: 'SENT',
       myDataMark: '4000012345',
     });
@@ -125,6 +126,34 @@ describe('DocumentsService myDATA field validation', () => {
         data: expect.objectContaining({
           correctsDocumentId: 'original-1',
           correlatedInvoiceMark: '4000012345',
+        }),
+      }),
+    );
+  });
+
+  it('keeps supplier credit corrections on the purchase side', async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      id: 'purchase-1',
+      clientCompanyId: 'company-1',
+      documentType: DocumentType.PURCHASE_INVOICE,
+      myDataStatus: 'SENT',
+      myDataMark: '4000012346',
+    });
+
+    await service.create(tenant, {
+      ...baseDto,
+      documentType: DocumentType.PURCHASE_CREDIT_NOTE,
+      correctsDocumentId: 'purchase-1',
+    });
+
+    expect(prisma.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          documentType: DocumentType.PURCHASE_CREDIT_NOTE,
+          correctsDocumentId: 'purchase-1',
+          correlatedInvoiceMark: '4000012346',
+          movementCode: 'PURCHASE_CREDIT_NOTE',
+          journalCode: 'PURCHASES',
         }),
       }),
     );

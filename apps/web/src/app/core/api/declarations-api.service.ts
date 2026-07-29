@@ -14,12 +14,21 @@ export interface DeclarationWorkpaper {
   periodStartMonth: number;
   periodEndMonth: number;
   periodCloseReviewId?: string | null;
+  returnType: 'INITIAL' | 'AMENDING';
+  revision: number;
   status: string;
   notes?: string | null;
   submittedAt?: string | null;
   submissionReference?: string | null;
   submissionDate?: string | null;
+  submissionDeadline?: string | null;
+  lateSubmission?: boolean | null;
   submissionAttachments?: DeclarationAttachment[] | null;
+  vatPayableAmount: string | number;
+  vatCreditCarryForward: string | number;
+  vatRefundClaim: string | number;
+  vatDebtId?: string | null;
+  taxPayments: DeclarationTaxPayment[];
   totals: {
     salesNet?: number;
     salesVat?: number;
@@ -69,6 +78,16 @@ export interface DeclarationWorkpaper {
   };
 }
 
+export interface DeclarationTaxPayment {
+  id: string;
+  installmentNumber: number;
+  dueDate: string;
+  amount: string | number;
+  paidAt?: string | null;
+  paymentReference?: string | null;
+  latePayment?: boolean | null;
+}
+
 export interface DeclarationAttachment {
   name: string;
   url: string;
@@ -91,6 +110,7 @@ export class DeclarationsApiService {
     year: number;
     month?: number;
     periodKind?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+    createAmending?: boolean;
   }): Observable<DeclarationWorkpaper> {
     return this.http.post<DeclarationWorkpaper>(
       `${this.baseUrl}/vat-workpaper/generate`,
@@ -107,6 +127,14 @@ export class DeclarationsApiService {
     return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/workpapers/${id}/approve`, {}, {});
   }
 
+  reopen(id: string): Observable<DeclarationWorkpaper> {
+    return this.http.post<DeclarationWorkpaper>(
+      `${this.baseUrl}/workpapers/${id}/reopen`,
+      {},
+      {},
+    );
+  }
+
   submit(
     id: string,
     payload: {
@@ -114,6 +142,18 @@ export class DeclarationsApiService {
       submissionDate: string;
       attachments?: DeclarationAttachment[];
       notes?: string;
+      submissionDeadline?: string;
+      vatResult?: {
+        payableAmount: number;
+        creditCarryForward: number;
+        refundClaim: number;
+        debtId?: string;
+        payments: Array<{
+          installmentNumber: number;
+          dueDate: string;
+          amount: number;
+        }>;
+      };
     },
   ): Observable<DeclarationWorkpaper> {
     return this.http.post<DeclarationWorkpaper>(
@@ -125,5 +165,17 @@ export class DeclarationsApiService {
 
   archive(id: string): Observable<DeclarationWorkpaper> {
     return this.http.post<DeclarationWorkpaper>(`${this.baseUrl}/workpapers/${id}/archive`, {}, {});
+  }
+
+  payTaxPayment(
+    paymentId: string,
+    paidAt: string,
+    paymentReference: string,
+  ): Observable<DeclarationTaxPayment> {
+    return this.http.post<DeclarationTaxPayment>(
+      `${this.baseUrl}/tax-payments/${paymentId}/pay`,
+      { paidAt, paymentReference },
+      {},
+    );
   }
 }

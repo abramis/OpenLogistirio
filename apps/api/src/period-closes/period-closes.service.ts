@@ -395,7 +395,10 @@ function buildReviewSummary(
     (document) => document.myDataStatus === MyDataStatus.FAILED,
   );
   const unresolvedMyDataDocuments = documents.filter((document) => {
-    if (document.documentType === DocumentType.PURCHASE_INVOICE) {
+    if (
+      document.documentType === DocumentType.PURCHASE_INVOICE ||
+      document.documentType === DocumentType.PURCHASE_CREDIT_NOTE
+    ) {
       return !document.myDataMark;
     }
     return (
@@ -417,7 +420,8 @@ function buildReviewSummary(
 
   const erp = vatSideTotals(documents, (document) =>
     document.documentType === DocumentType.PURCHASE_INVOICE ||
-    document.movementCode === 'PURCHASE_INVOICE'
+    document.documentType === DocumentType.PURCHASE_CREDIT_NOTE ||
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.movementCode ?? '')
       ? 'purchases'
       : 'sales',
   );
@@ -458,7 +462,11 @@ function vatSideTotals<
   const totals = { salesNet: 0, salesVat: 0, purchasesNet: 0, purchasesVat: 0 };
   for (const item of items) {
     const sign =
-      item.documentType === DocumentType.CREDIT_NOTE || item.invoiceType?.startsWith('5.') ? -1 : 1;
+      item.documentType === DocumentType.CREDIT_NOTE ||
+      item.documentType === DocumentType.PURCHASE_CREDIT_NOTE ||
+      item.invoiceType?.startsWith('5.')
+        ? -1
+        : 1;
     const prefix = side(item) === 'sales' ? 'sales' : 'purchases';
     totals[`${prefix}Net`] += Number(item.netAmount ?? 0) * sign;
     totals[`${prefix}Vat`] += Number(item.vatAmount ?? 0) * sign;

@@ -27,7 +27,7 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
       <div>
         <h1 class="page-title">Δηλωτικά workpapers</h1>
         <p class="page-subtitle">
-          Προετοιμασία δηλώσεων από τα δεδομένα του γραφείου, χωρίς επίσημη υποβολή.
+          Προετοιμασία, λογιστική έγκριση και καταχώριση της πραγματικής υποβολής και πληρωμής.
         </p>
       </div>
     </section>
@@ -319,10 +319,18 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
                 Έγκριση λογιστή
               </button>
               <button
+                class="btn btn-secondary"
+                type="button"
+                *ngIf="(workpaper.status === 'READY' || workpaper.status === 'APPROVED') && canControlClose"
+                (click)="reopenWorkpaper(workpaper)"
+              >
+                Επιστροφή σε πρόχειρο
+              </button>
+              <button
                 class="btn btn-primary"
                 type="button"
                 *ngIf="workpaper.status === 'APPROVED' && canControlClose"
-                (click)="openSubmissionForm(workpaper.id)"
+                (click)="openSubmissionForm(workpaper)"
               >
                 Καταχώρηση υποβολής
               </button>
@@ -333,6 +341,14 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
                 (click)="archiveWorkpaper(workpaper)"
               >
                 Αρχειοθέτηση
+              </button>
+              <button
+                class="btn btn-secondary"
+                type="button"
+                *ngIf="(workpaper.status === 'SUBMITTED' || workpaper.status === 'ARCHIVED') && canControlClose"
+                (click)="createAmending(workpaper)"
+              >
+                Τροποποιητική
               </button>
               <button class="btn btn-secondary" type="button" (click)="toggleDetails(workpaper.id)">
                 <span class="material-symbols-outlined">
@@ -349,6 +365,10 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
 
           <div class="workpaper-meta">
             <span>Περίοδος {{ periodLabel(workpaper) }}</span>
+            <span>{{ workpaper.returnType === 'INITIAL' ? 'Αρχική' : 'Τροποποιητική ' + workpaper.revision }}</span>
+            <span *ngIf="workpaper.submissionDeadline">
+              Προθεσμία {{ workpaper.submissionDeadline | date: 'dd/MM/yyyy' }}
+            </span>
             <span>Generated {{ workpaper.generatedAt | date: 'dd/MM/yyyy HH:mm' }}</span>
             <span>{{ workpaper.totals.documentCount || 0 }} παραστατικά</span>
             <span
@@ -361,6 +381,16 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
             <span *ngIf="workpaper.submissionReference">
               Υποβολή {{ workpaper.submissionReference }} ·
               {{ workpaper.submissionDate | date: 'dd/MM/yyyy' }}
+              <strong *ngIf="workpaper.lateSubmission"> · εκπρόθεσμη</strong>
+            </span>
+            <span *ngIf="asNumber(workpaper.vatPayableAmount) > 0">
+              Χρεωστικό {{ workpaper.vatPayableAmount | number: '1.2-2' }} €
+            </span>
+            <span *ngIf="asNumber(workpaper.vatCreditCarryForward) > 0">
+              Πιστωτικό {{ workpaper.vatCreditCarryForward | number: '1.2-2' }} €
+            </span>
+            <span *ngIf="asNumber(workpaper.vatRefundClaim) > 0">
+              Επιστροφή {{ workpaper.vatRefundClaim | number: '1.2-2' }} €
             </span>
           </div>
 
@@ -377,6 +407,77 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
                 [ngModelOptions]="{ standalone: true }"
               />
             </label>
+            <label>
+              Επίσημη προθεσμία
+              <input
+                type="date"
+                [(ngModel)]="submissionDeadline"
+                [ngModelOptions]="{ standalone: true }"
+              />
+            </label>
+            <label>
+              Χρεωστικό ποσό
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                [(ngModel)]="vatPayableAmount"
+                [ngModelOptions]="{ standalone: true }"
+              />
+            </label>
+            <label>
+              Πιστωτικό για μεταφορά
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                [(ngModel)]="vatCreditCarryForward"
+                [ngModelOptions]="{ standalone: true }"
+              />
+            </label>
+            <label>
+              Αίτημα επιστροφής
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                [(ngModel)]="vatRefundClaim"
+                [ngModelOptions]="{ standalone: true }"
+              />
+            </label>
+            <label>
+              Ταυτότητα Οφειλής
+              <input [(ngModel)]="vatDebtId" [ngModelOptions]="{ standalone: true }" />
+            </label>
+            <div class="vat-payment-builder" *ngIf="vatPayableAmount > 0">
+              <label class="check-row">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="vatTwoInstallments"
+                  [ngModelOptions]="{ standalone: true }"
+                  [disabled]="vatPayableAmount <= 100"
+                />
+                Δύο δόσεις (μόνο εμπρόθεσμη δήλωση άνω των 100 €)
+              </label>
+              <button class="btn btn-secondary btn-small" type="button" (click)="buildVatPayments()">
+                Δημιουργία δόσεων
+              </button>
+            </div>
+            <div class="vat-payment-row" *ngFor="let payment of vatPaymentDrafts; let index = index">
+              <strong>Δόση {{ payment.installmentNumber }}</strong>
+              <input
+                type="date"
+                [(ngModel)]="payment.dueDate"
+                [ngModelOptions]="{ standalone: true }"
+              />
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                [(ngModel)]="payment.amount"
+                [ngModelOptions]="{ standalone: true }"
+              />
+            </div>
             <label class="submission-notes">
               Σημειώσεις τελικού ελέγχου
               <textarea
@@ -415,6 +516,34 @@ import { SupportingDocumentsApiService } from '../../core/api/supporting-documen
               <button class="btn btn-secondary" type="button" (click)="cancelSubmissionForm()">
                 Άκυρο
               </button>
+            </div>
+          </div>
+
+          <div class="vat-payments" *ngIf="workpaper.status === 'SUBMITTED' && workpaper.taxPayments.length > 0">
+            <h3>Πληρωμές ΦΠΑ · {{ workpaper.vatDebtId }}</h3>
+            <div class="vat-payment-status" *ngFor="let payment of workpaper.taxPayments">
+              <div>
+                <strong>Δόση {{ payment.installmentNumber }} · {{ payment.amount | number: '1.2-2' }} €</strong>
+                <small>Λήξη {{ payment.dueDate | date: 'dd/MM/yyyy' }}</small>
+              </div>
+              <div *ngIf="payment.paidAt">
+                Πληρώθηκε {{ payment.paidAt | date: 'dd/MM/yyyy' }}
+                <small>{{ payment.paymentReference }}<span *ngIf="payment.latePayment"> · εκπρόθεσμη</span></small>
+              </div>
+              <div class="payment-entry" *ngIf="!payment.paidAt">
+                <input #vatPaidAt type="date" [value]="todayDate" />
+                <input
+                  #vatPaymentReference
+                  placeholder="Τραπεζική αναφορά"
+                />
+                <button
+                  class="btn btn-secondary btn-small"
+                  type="button"
+                  (click)="payVat(payment.id, vatPaidAt.value, vatPaymentReference.value)"
+                >
+                  Πληρώθηκε
+                </button>
+              </div>
             </div>
           </div>
 
@@ -955,8 +1084,20 @@ export class DeclarationsPageComponent {
   submissionWorkpaperId = '';
   submissionReference = '';
   submissionDate = '';
+  submissionDeadline = '';
   submissionNotes = '';
   submissionAttachments: DeclarationAttachment[] = [];
+  vatPayableAmount = 0;
+  vatCreditCarryForward = 0;
+  vatRefundClaim = 0;
+  vatDebtId = '';
+  vatTwoInstallments = false;
+  vatPaymentDrafts: Array<{
+    installmentNumber: number;
+    dueDate: string;
+    amount: number;
+  }> = [];
+  readonly todayDate = new Date().toISOString().slice(0, 10);
   readonly canControlClose = this.auth.hasAnyRole([
     'SUPER_ADMIN',
     'ACCOUNTING_OFFICE_ADMIN',
@@ -1163,20 +1304,69 @@ export class DeclarationsPageComponent {
     });
   }
 
-  openSubmissionForm(workpaperId: string): void {
-    this.submissionWorkpaperId = workpaperId;
+  reopenWorkpaper(workpaper: DeclarationWorkpaper): void {
+    this.clearMessages();
+    this.declarationsApi.reopen(workpaper.id).subscribe({
+      next: () => {
+        this.message = 'Το workpaper επέστρεψε σε πρόχειρο για νέο έλεγχο.';
+        this.reload$.next();
+      },
+      error: (error: unknown) => this.showError(error),
+    });
+  }
+
+  createAmending(workpaper: DeclarationWorkpaper): void {
+    this.clearMessages();
+    this.declarationsApi
+      .generateVatWorkpaper({
+        clientCompanyId: workpaper.clientCompanyId,
+        year: workpaper.periodYear,
+        month:
+          workpaper.periodKind === 'ANNUAL' ? undefined : workpaper.periodEndMonth,
+        periodKind: workpaper.periodKind,
+        createAmending: true,
+      })
+      .subscribe({
+        next: (created) => {
+          this.message = 'Δημιουργήθηκε τροποποιητική δήλωση ΦΠΑ.';
+          this.expandedId = created.id;
+          this.reload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
+  }
+
+  openSubmissionForm(workpaper: DeclarationWorkpaper): void {
+    this.submissionWorkpaperId = workpaper.id;
     this.submissionReference = '';
     this.submissionDate = new Date().toISOString().slice(0, 10);
+    this.submissionDeadline =
+      workpaper.submissionDeadline?.slice(0, 10) ??
+      this.defaultVatDeadline(workpaper.periodYear, workpaper.periodEndMonth);
     this.submissionNotes = '';
     this.submissionAttachments = [];
+    const predicted = Number(workpaper.totals.payableVat ?? 0);
+    this.vatPayableAmount = predicted > 0 ? predicted : 0;
+    this.vatCreditCarryForward = predicted < 0 ? Math.abs(predicted) : 0;
+    this.vatRefundClaim = 0;
+    this.vatDebtId = '';
+    this.vatTwoInstallments = false;
+    this.buildVatPayments();
   }
 
   cancelSubmissionForm(): void {
     this.submissionWorkpaperId = '';
     this.submissionReference = '';
     this.submissionDate = '';
+    this.submissionDeadline = '';
     this.submissionNotes = '';
     this.submissionAttachments = [];
+    this.vatPayableAmount = 0;
+    this.vatCreditCarryForward = 0;
+    this.vatRefundClaim = 0;
+    this.vatDebtId = '';
+    this.vatTwoInstallments = false;
+    this.vatPaymentDrafts = [];
   }
 
   addSubmissionAttachment(name: string, url: string): void {
@@ -1229,9 +1419,12 @@ export class DeclarationsPageComponent {
   }
 
   submitWorkpaper(workpaper: DeclarationWorkpaper): void {
-    if (!this.submissionReference.trim() || !this.submissionDate) {
-      this.errorMessage = 'Συμπλήρωσε αριθμό και ημερομηνία υποβολής.';
+    if (!this.submissionReference.trim() || !this.submissionDate || !this.submissionDeadline) {
+      this.errorMessage = 'Συμπλήρωσε αριθμό, ημερομηνία και επίσημη προθεσμία υποβολής.';
       return;
+    }
+    if (this.vatPayableAmount > 0 && this.vatPaymentDrafts.length === 0) {
+      this.buildVatPayments();
     }
     this.clearMessages();
     this.declarationsApi
@@ -1240,6 +1433,14 @@ export class DeclarationsPageComponent {
         submissionDate: this.submissionDate,
         attachments: this.submissionAttachments,
         notes: this.submissionNotes,
+        submissionDeadline: this.submissionDeadline,
+        vatResult: {
+          payableAmount: Number(this.vatPayableAmount),
+          creditCarryForward: Number(this.vatCreditCarryForward),
+          refundClaim: Number(this.vatRefundClaim),
+          debtId: this.vatDebtId.trim() || undefined,
+          payments: this.vatPaymentDrafts,
+        },
       })
       .subscribe({
         next: () => {
@@ -1249,6 +1450,66 @@ export class DeclarationsPageComponent {
         },
         error: (error: unknown) => this.showError(error),
       });
+  }
+
+  buildVatPayments(): void {
+    const totalCents = Math.round(Number(this.vatPayableAmount || 0) * 100);
+    if (totalCents <= 0 || !this.submissionDeadline) {
+      this.vatPaymentDrafts = [];
+      return;
+    }
+    const count = this.vatTwoInstallments && this.vatPayableAmount > 100 ? 2 : 1;
+    const firstCents = count === 2 ? Math.floor(totalCents / 2) : totalCents;
+    this.vatPaymentDrafts = [
+      {
+        installmentNumber: 1,
+        dueDate: this.submissionDeadline,
+        amount: firstCents / 100,
+      },
+    ];
+    if (count === 2) {
+      const deadline = new Date(`${this.submissionDeadline}T12:00:00Z`);
+      const second = new Date(
+        Date.UTC(deadline.getUTCFullYear(), deadline.getUTCMonth() + 2, 0),
+      );
+      while (second.getUTCDay() === 0 || second.getUTCDay() === 6) {
+        second.setUTCDate(second.getUTCDate() - 1);
+      }
+      this.vatPaymentDrafts.push({
+        installmentNumber: 2,
+        dueDate: second.toISOString().slice(0, 10),
+        amount: (totalCents - firstCents) / 100,
+      });
+    }
+  }
+
+  payVat(paymentId: string, paidAt: string, paymentReference: string): void {
+    if (!paidAt || !paymentReference.trim()) {
+      this.errorMessage = 'Συμπλήρωσε ημερομηνία και τραπεζική αναφορά πληρωμής.';
+      return;
+    }
+    this.clearMessages();
+    this.declarationsApi
+      .payTaxPayment(paymentId, paidAt, paymentReference.trim())
+      .subscribe({
+        next: () => {
+          this.message = 'Η πληρωμή ΦΠΑ καταχωρίστηκε.';
+          this.reload$.next();
+        },
+        error: (error: unknown) => this.showError(error),
+      });
+  }
+
+  asNumber(value: string | number): number {
+    return Number(value);
+  }
+
+  private defaultVatDeadline(year: number, periodEndMonth: number): string {
+    const date = new Date(Date.UTC(year, periodEndMonth + 1, 0));
+    while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+      date.setUTCDate(date.getUTCDate() - 1);
+    }
+    return date.toISOString().slice(0, 10);
   }
 
   archiveWorkpaper(workpaper: DeclarationWorkpaper): void {
@@ -1362,7 +1623,8 @@ export class DeclarationsPageComponent {
     const labels: Record<string, string> = {
       SALES_INVOICE: 'Τιμολόγιο πώλησης',
       PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
       RETAIL_RECEIPT: 'Απόδειξη λιανικής',
     };
 

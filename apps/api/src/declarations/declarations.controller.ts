@@ -6,7 +6,10 @@ import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { DeclarationsService } from './declarations.service';
 import { GenerateVatWorkpaperDto } from './dto/generate-vat-workpaper.dto';
-import { SubmitDeclarationWorkpaperDto } from './dto/submit-declaration-workpaper.dto';
+import {
+  PayDeclarationTaxPaymentDto,
+  SubmitDeclarationWorkpaperDto,
+} from './dto/submit-declaration-workpaper.dto';
 
 @ApiTags('declarations')
 @Controller('declarations')
@@ -42,6 +45,12 @@ export class DeclarationsController {
     return this.declarationsService.approve(tenant, id);
   }
 
+  @Post('workpapers/:id/reopen')
+  @Roles(...ACCOUNTING_CONTROL_ROLES)
+  reopen(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.declarationsService.reopen(tenant, id);
+  }
+
   @Post('workpapers/:id/submit')
   @Roles(...ACCOUNTING_CONTROL_ROLES)
   submit(
@@ -56,5 +65,15 @@ export class DeclarationsController {
   @Roles(...ACCOUNTING_CONTROL_ROLES)
   archive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.declarationsService.archive(tenant, id);
+  }
+
+  @Post('tax-payments/:paymentId/pay')
+  @Roles(...OFFICE_WRITE_ROLES)
+  payTaxPayment(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: PayDeclarationTaxPaymentDto,
+  ) {
+    return this.declarationsService.payTaxPayment(tenant, paymentId, dto);
   }
 }

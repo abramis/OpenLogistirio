@@ -3,7 +3,10 @@ import {
   DeclarationWorkpaperStatus,
   DeclarationWorkpaperPeriodKind,
   DeclarationWorkpaperType,
+  DeclarationReturnType,
   DocumentType,
+  ObligationStatus,
+  ObligationType,
   PeriodCloseKind,
   Prisma,
 } from '@prisma/client';
@@ -11,7 +14,12 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { GenerateVatWorkpaperDto } from './dto/generate-vat-workpaper.dto';
-import { SubmitDeclarationWorkpaperDto } from './dto/submit-declaration-workpaper.dto';
+import {
+  PayDeclarationTaxPaymentDto,
+  SubmitDeclarationWorkpaperDto,
+  VatDeclarationResultDto,
+} from './dto/submit-declaration-workpaper.dto';
+import { defaultVatSubmissionDeadline, isVatActionLate } from './vat-compliance';
 
 @Injectable()
 export class DeclarationsService {
@@ -30,8 +38,14 @@ export class DeclarationsService {
         clientCompany: {
           select: { id: true, legalName: true, vatNumber: true },
         },
+        taxPayments: { orderBy: { installmentNumber: 'asc' } },
       },
-      orderBy: [{ periodYear: 'desc' }, { periodEndMonth: 'desc' }, { generatedAt: 'desc' }],
+      orderBy: [
+        { periodYear: 'desc' },
+        { periodEndMonth: 'desc' },
+        { revision: 'desc' },
+        { generatedAt: 'desc' },
+      ],
     });
   }
 
@@ -49,26 +63,13 @@ export class DeclarationsService {
     }
 
     const period = resolveWorkpaperPeriod(dto);
-    const dateFilter = toPeriodDateFilter(dto.year, period.startMonth, period.endMonth);
-    const [documents, snapshots] = await Promise.all([
-      this.prisma.document.findMany({
-        where: {
-          accountingOfficeId: tenant.accountingOfficeId,
-          clientCompanyId: dto.clientCompanyId,
-          deletedAt: null,
-          issueDate: dateFilter,
-        },
-      }),
-      this.prisma.myDataSnapshot.findMany({
-        where: {
-          accountingOfficeId: tenant.accountingOfficeId,
-          clientCompanyId: dto.clientCompanyId,
-          issueDate: dateFilter,
-        },
-        orderBy: { fetchedAt: 'desc' },
-      }),
-    ]);
-    const totals = toVatTotals(documents, snapshots, company.vatNumber);
+    const totals = await this.calculateVatTotals(
+      tenant,
+      dto.clientCompanyId,
+      dto.year,
+      period,
+      company.vatNumber,
+    );
     const title = workpaperTitle(dto.year, period);
 
     const existing = await this.prisma.declarationWorkpaper.findFirst({
@@ -79,9 +80,10 @@ export class DeclarationsService {
         periodKind: period.kind,
         periodEndMonth: period.endMonth,
       },
+      orderBy: { revision: 'desc' },
     });
 
-    if (existing) {
+    if (existing?.status === DeclarationWorkpaperStatus.DRAFT) {
       return this.prisma.declarationWorkpaper.update({
         where: { id: existing.id },
         data: {
@@ -100,9 +102,35 @@ export class DeclarationsService {
           periodMonth:
             period.kind === DeclarationWorkpaperPeriodKind.ANNUAL ? null : period.endMonth,
           periodCloseReviewId: null,
+          submissionDeadline: defaultVatSubmissionDeadline(dto.year, period.endMonth),
+          lateSubmission: null,
+          vatPayableAmount: 0,
+          vatCreditCarryForward: 0,
+          vatRefundClaim: 0,
+          vatDebtId: null,
+          taxPayments: { deleteMany: {} },
         },
+        include: { taxPayments: { orderBy: { installmentNumber: 'asc' } } },
       });
     }
+    if (existing && !dto.createAmending) {
+      throw new BadRequestException(
+        existing.status === DeclarationWorkpaperStatus.SUBMITTED ||
+          existing.status === DeclarationWorkpaperStatus.ARCHIVED
+          ? 'Η δήλωση ΦΠΑ έχει ήδη υποβληθεί. Δημιουργήστε τροποποιητική.'
+          : 'Το workpaper έχει φύγει από το πρόχειρο και δεν μπορεί να ξαναγραφτεί.',
+      );
+    }
+    if (
+      existing &&
+      existing.status !== DeclarationWorkpaperStatus.SUBMITTED &&
+      existing.status !== DeclarationWorkpaperStatus.ARCHIVED
+    ) {
+      throw new BadRequestException(
+        'Τροποποιητική ΦΠΑ δημιουργείται μόνο μετά την καταχώριση της επίσημης υποβολής.',
+      );
+    }
+    const revision = existing ? existing.revision + 1 : 0;
 
     return this.prisma.declarationWorkpaper.create({
       data: {
@@ -115,8 +143,13 @@ export class DeclarationsService {
         periodKind: period.kind,
         periodStartMonth: period.startMonth,
         periodEndMonth: period.endMonth,
+        returnType:
+          revision === 0 ? DeclarationReturnType.INITIAL : DeclarationReturnType.AMENDING,
+        revision,
+        submissionDeadline: defaultVatSubmissionDeadline(dto.year, period.endMonth),
         totals,
       },
+      include: { taxPayments: { orderBy: { installmentNumber: 'asc' } } },
     });
   }
 
@@ -184,6 +217,9 @@ export class DeclarationsService {
     if (Number.isNaN(submissionDate.getTime())) {
       throw new BadRequestException('Submission date is invalid.');
     }
+    if (workpaper.type === DeclarationWorkpaperType.VAT_RETURN) {
+      return this.submitVatWorkpaper(tenant, workpaper, dto, submissionDate);
+    }
 
     const attachments = dto.attachments?.map((attachment) => ({
       name: attachment.name.trim(),
@@ -208,6 +244,74 @@ export class DeclarationsService {
       submissionDate: updated.submissionDate,
       attachmentCount: attachments?.length ?? 0,
     });
+    return updated;
+  }
+
+  async reopen(tenant: TenantContext, id: string) {
+    const workpaper = await this.getTenantWorkpaper(tenant, id);
+    if (
+      workpaper.status !== DeclarationWorkpaperStatus.READY &&
+      workpaper.status !== DeclarationWorkpaperStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        'Only a ready or approved workpaper can be returned to draft.',
+      );
+    }
+    const updated = await this.prisma.declarationWorkpaper.update({
+      where: { id },
+      data: {
+        status: DeclarationWorkpaperStatus.DRAFT,
+        approvedById: null,
+        approvedAt: null,
+        periodCloseReviewId: null,
+      },
+    });
+    await this.recordAudit(tenant, id, 'DECLARATION_WORKPAPER_REOPENED', {});
+    return updated;
+  }
+
+  async payTaxPayment(
+    tenant: TenantContext,
+    paymentId: string,
+    dto: PayDeclarationTaxPaymentDto,
+  ) {
+    const payment = await this.prisma.declarationTaxPayment.findFirst({
+      where: {
+        id: paymentId,
+        declarationWorkpaper: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          type: DeclarationWorkpaperType.VAT_RETURN,
+          status: DeclarationWorkpaperStatus.SUBMITTED,
+        },
+      },
+    });
+    if (!payment) {
+      throw new NotFoundException('VAT payment installment was not found.');
+    }
+    if (payment.paidAt) {
+      throw new BadRequestException('This VAT installment is already recorded as paid.');
+    }
+    const paidAt = new Date(dto.paidAt);
+    const updated = await this.prisma.declarationTaxPayment.update({
+      where: { id: payment.id },
+      data: {
+        paidAt,
+        paymentReference: dto.paymentReference.trim(),
+        latePayment: isVatActionLate(paidAt, payment.dueDate),
+        notes: dto.notes?.trim() || null,
+      },
+    });
+    await this.recordAudit(
+      tenant,
+      payment.declarationWorkpaperId,
+      'VAT_INSTALLMENT_PAID',
+      {
+        installmentNumber: payment.installmentNumber,
+        paidAt,
+        paymentReference: updated.paymentReference,
+        latePayment: updated.latePayment,
+      },
+    );
     return updated;
   }
 
@@ -239,6 +343,152 @@ export class DeclarationsService {
       entityId,
       newValue: { event, ...details } as Prisma.InputJsonValue,
     });
+  }
+
+  private async submitVatWorkpaper(
+    tenant: TenantContext,
+    workpaper: Awaited<ReturnType<DeclarationsService['getTenantWorkpaper']>>,
+    dto: SubmitDeclarationWorkpaperDto,
+    submissionDate: Date,
+  ) {
+    if (!dto.vatResult) {
+      throw new BadRequestException(
+        'VAT result, debt identity and payment schedule are required.',
+      );
+    }
+    const deadline = dto.submissionDeadline
+      ? new Date(dto.submissionDeadline)
+      : workpaper.submissionDeadline ??
+        defaultVatSubmissionDeadline(workpaper.periodYear, workpaper.periodEndMonth);
+    const lateSubmission = isVatActionLate(submissionDate, deadline);
+    validateVatResult(dto.vatResult, lateSubmission);
+
+    const currentTotals = await this.calculateVatTotals(
+      tenant,
+      workpaper.clientCompanyId,
+      workpaper.periodYear,
+      {
+        kind: workpaper.periodKind,
+        startMonth: workpaper.periodStartMonth,
+        endMonth: workpaper.periodEndMonth,
+      },
+    );
+    if (!sameVatTotals(workpaper.totals, currentTotals)) {
+      throw new BadRequestException(
+        'Τα δεδομένα ΦΠΑ ή myDATA άλλαξαν μετά την έγκριση. Επιστρέψτε το workpaper σε πρόχειρο, ανανεώστε και εγκρίνετε ξανά.',
+      );
+    }
+
+    const attachments = dto.attachments?.map((attachment) => ({
+      name: attachment.name.trim(),
+      url: attachment.url.trim(),
+    }));
+    const result = dto.vatResult;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.declarationTaxPayment.deleteMany({
+        where: { declarationWorkpaperId: workpaper.id },
+      });
+      const saved = await tx.declarationWorkpaper.update({
+        where: { id: workpaper.id },
+        data: {
+          status: DeclarationWorkpaperStatus.SUBMITTED,
+          submittedAt: new Date(),
+          submissionReference: dto.submissionReference.trim(),
+          submissionDate,
+          submissionDeadline: deadline,
+          lateSubmission,
+          submissionAttachments:
+            attachments === undefined
+              ? Prisma.JsonNull
+              : (attachments as unknown as Prisma.InputJsonValue),
+          notes: dto.notes === undefined ? undefined : dto.notes.trim() || null,
+          vatPayableAmount: result.payableAmount,
+          vatCreditCarryForward: result.creditCarryForward,
+          vatRefundClaim: result.refundClaim,
+          vatDebtId: result.debtId?.trim() || null,
+          taxPayments: {
+            create: result.payments.map((payment) => ({
+              installmentNumber: payment.installmentNumber,
+              dueDate: new Date(payment.dueDate),
+              amount: payment.amount,
+            })),
+          },
+        },
+        include: { taxPayments: { orderBy: { installmentNumber: 'asc' } } },
+      });
+      const obligation = await tx.officeObligation.findFirst({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId: workpaper.clientCompanyId,
+          type: ObligationType.VAT_RETURN,
+          periodYear: workpaper.periodYear,
+          periodMonth: workpaper.periodEndMonth,
+        },
+      });
+      if (obligation) {
+        await tx.officeObligation.update({
+          where: { id: obligation.id },
+          data: { status: ObligationStatus.SUBMITTED, completedAt: submissionDate },
+        });
+      }
+      return saved;
+    });
+    await this.recordAudit(tenant, workpaper.id, 'VAT_RETURN_SUBMITTED', {
+      submissionReference: updated.submissionReference,
+      submissionDate: updated.submissionDate,
+      lateSubmission: updated.lateSubmission,
+      payableAmount: Number(updated.vatPayableAmount),
+      creditCarryForward: Number(updated.vatCreditCarryForward),
+      refundClaim: Number(updated.vatRefundClaim),
+      paymentCount: updated.taxPayments.length,
+    });
+    return updated;
+  }
+
+  private async calculateVatTotals(
+    tenant: TenantContext,
+    clientCompanyId: string,
+    year: number,
+    period: WorkpaperPeriod,
+    knownCompanyVatNumber?: string,
+  ) {
+    const dateFilter = toPeriodDateFilter(year, period.startMonth, period.endMonth);
+    const [documents, snapshots, company] = await Promise.all([
+      this.prisma.document.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId,
+          deletedAt: null,
+          issueDate: dateFilter,
+        },
+      }),
+      this.prisma.myDataSnapshot.findMany({
+        where: {
+          accountingOfficeId: tenant.accountingOfficeId,
+          clientCompanyId,
+          issueDate: dateFilter,
+        },
+        orderBy: { fetchedAt: 'desc' },
+      }),
+      knownCompanyVatNumber
+        ? Promise.resolve(undefined)
+        : this.prisma.clientCompany.findFirst({
+            where: {
+              id: clientCompanyId,
+              accountingOfficeId: tenant.accountingOfficeId,
+              deletedAt: null,
+            },
+            select: { vatNumber: true },
+          }),
+    ]);
+    if (!knownCompanyVatNumber && !company) {
+      throw new NotFoundException('Client company was not found.');
+    }
+    return toVatTotals(
+      documents,
+      snapshots,
+      knownCompanyVatNumber ?? company?.vatNumber ?? '',
+    );
   }
 
   private async getTenantWorkpaper(tenant: TenantContext, id: string) {
@@ -307,6 +557,87 @@ function workpaperTitle(year: number, period: WorkpaperPeriod): string {
     return `Workpaper ΦΠΑ τριμήνου ${String(period.startMonth).padStart(2, '0')}-${String(period.endMonth).padStart(2, '0')}/${year}`;
   }
   return `Workpaper ΦΠΑ ${String(period.endMonth).padStart(2, '0')}/${year}`;
+}
+
+function validateVatResult(result: VatDeclarationResultDto, lateSubmission: boolean) {
+  if (result.payableAmount > 0 && (result.creditCarryForward > 0 || result.refundClaim > 0)) {
+    throw new BadRequestException(
+      'A VAT return cannot be both payable and credit/refund at the same time.',
+    );
+  }
+  if (result.payableAmount <= 0) {
+    if (result.payments.length > 0 || result.debtId?.trim()) {
+      throw new BadRequestException(
+        'A zero or credit VAT return must not contain debt identity or payment installments.',
+      );
+    }
+    return;
+  }
+  if (!result.debtId?.trim()) {
+    throw new BadRequestException('Debt identity is required for a payable VAT return.');
+  }
+  if (result.payments.length < 1 || result.payments.length > 2) {
+    throw new BadRequestException('A payable VAT return requires one or two installments.');
+  }
+  if (result.payableAmount <= 100 && result.payments.length !== 1) {
+    throw new BadRequestException(
+      'Two VAT installments are available only when the payable amount exceeds 100 euros.',
+    );
+  }
+  if (lateSubmission && result.payments.length === 2) {
+    throw new BadRequestException(
+      'Two VAT installments are available only for a timely declaration.',
+    );
+  }
+  const numbers = result.payments.map((payment) => payment.installmentNumber).sort();
+  if (
+    new Set(numbers).size !== numbers.length ||
+    numbers.some((number, index) => number !== index + 1)
+  ) {
+    throw new BadRequestException('VAT installment numbers must be consecutive and unique.');
+  }
+  const paymentTotal = roundMoney(
+    result.payments.reduce((sum, payment) => sum + payment.amount, 0),
+  );
+  if (paymentTotal !== roundMoney(result.payableAmount)) {
+    throw new BadRequestException(
+      'VAT installment total does not agree with the payable declaration amount.',
+    );
+  }
+}
+
+function sameVatTotals(previous: Prisma.JsonValue, current: Prisma.InputJsonValue): boolean {
+  const summary = (value: Prisma.JsonValue | Prisma.InputJsonValue) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+    const item = value as Record<string, unknown>;
+    const reconciliation =
+      item['myDataReconciliation'] &&
+      typeof item['myDataReconciliation'] === 'object' &&
+      !Array.isArray(item['myDataReconciliation'])
+        ? (item['myDataReconciliation'] as Record<string, unknown>)
+        : {};
+    return {
+      salesNet: Number(item['salesNet'] ?? 0),
+      salesVat: Number(item['salesVat'] ?? 0),
+      purchasesNet: Number(item['purchasesNet'] ?? 0),
+      purchasesVat: Number(item['purchasesVat'] ?? 0),
+      payableVat: Number(item['payableVat'] ?? 0),
+      documentCount: Number(item['documentCount'] ?? 0),
+      failedMyData: Number(item['failedMyData'] ?? 0),
+      reconciliationMismatches: Number(reconciliation['mismatches'] ?? 0),
+      aadeSalesNet: Number(reconciliation['aadeSalesNet'] ?? 0),
+      aadeSalesVat: Number(reconciliation['aadeSalesVat'] ?? 0),
+      aadePurchasesNet: Number(reconciliation['aadePurchasesNet'] ?? 0),
+      aadePurchasesVat: Number(reconciliation['aadePurchasesVat'] ?? 0),
+      salesNetDelta: Number(reconciliation['salesNetDelta'] ?? 0),
+      salesVatDelta: Number(reconciliation['salesVatDelta'] ?? 0),
+      purchasesNetDelta: Number(reconciliation['purchasesNetDelta'] ?? 0),
+      purchasesVatDelta: Number(reconciliation['purchasesVatDelta'] ?? 0),
+    };
+  };
+  return JSON.stringify(summary(previous)) === JSON.stringify(summary(current));
 }
 
 interface VatBreakdownRow {
@@ -382,7 +713,11 @@ function toVatTotals(
   const documentTypeBreakdown = new Map<string, (typeof totals.documentTypeBreakdown)[number]>();
 
   for (const document of documents) {
-    const sign = document.documentType === DocumentType.CREDIT_NOTE ? -1 : 1;
+    const sign =
+      document.documentType === DocumentType.CREDIT_NOTE ||
+      document.documentType === DocumentType.PURCHASE_CREDIT_NOTE
+      ? -1
+      : 1;
     const net = roundMoney(Number(document.netAmount) * sign);
     const vat = roundMoney(Number(document.vatAmount) * sign);
     const total = roundMoney(Number(document.totalAmount) * sign);
@@ -472,7 +807,8 @@ function isPurchaseDocument(document: {
 }): boolean {
   return (
     document.documentType === DocumentType.PURCHASE_INVOICE ||
-    document.movementCode === 'PURCHASE_INVOICE'
+    document.documentType === DocumentType.PURCHASE_CREDIT_NOTE ||
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.movementCode ?? '')
   );
 }
 

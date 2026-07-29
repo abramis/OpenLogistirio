@@ -216,7 +216,7 @@ type SyncSource = 'BOTH' | 'REQUEST_DOCS' | 'REQUEST_TRANSMITTED_DOCS';
                 [disabled]="busy"
                 (click)="openPurchasePreview(item)"
               >
-                Δημιουργία αγοράς
+                {{ item.invoiceType?.startsWith('5.') ? 'Πιστωτικό προμηθευτή' : 'Δημιουργία αγοράς' }}
               </button>
               <button
                 class="btn btn-xs btn-secondary"
@@ -246,7 +246,13 @@ type SyncSource = 'BOTH' | 'REQUEST_DOCS' | 'REQUEST_TRANSMITTED_DOCS';
     <section class="card purchase-preview-card" *ngIf="purchasePreview as preview">
       <div class="card-header">
         <div>
-          <h2 class="card-title">Προεπισκόπηση παραστατικού αγοράς</h2>
+          <h2 class="card-title">
+            {{
+              preview.documentType === 'PURCHASE_CREDIT_NOTE'
+                ? 'Προεπισκόπηση πιστωτικού προμηθευτή'
+                : 'Προεπισκόπηση παραστατικού αγοράς'
+            }}
+          </h2>
           <p class="card-subtitle">
             {{ preview.supplier.name }} — {{ preview.series || '-' }}/{{ preview.documentNumber }}
           </p>
@@ -586,9 +592,12 @@ export class MyDataOfficePageComponent implements OnInit {
 
   environmentLabel(): string {
     if (!this.environment) return '';
-    if (this.environment.productionWriteEnabled) return 'AADE production — writes ενεργά';
-    if (this.environment.productionReadEnabled) return 'AADE production — μόνο ανάγνωση';
-    return this.environment.environment === 'test' ? 'AADE test' : 'AADE production — κλειδωμένο';
+    if (!this.environment.credentialsConfigured) return 'ΑΑΔΕ — δεν έχουν ρυθμιστεί credentials';
+    if (this.environment.productionWriteEnabled) return 'ΑΑΔΕ παραγωγής — αποστολές ενεργές';
+    if (this.environment.productionReadEnabled) return 'ΑΑΔΕ παραγωγής — μόνο ανάγνωση';
+    return this.environment.environment === 'test'
+      ? 'ΑΑΔΕ δοκιμών'
+      : 'ΑΑΔΕ παραγωγής — κλειδωμένη';
   }
 
   environmentClass(): string {
@@ -622,7 +631,7 @@ export class MyDataOfficePageComponent implements OnInit {
   }
 
   canAutoCreate(item: MyDataReconciliationItem): boolean {
-    return item.source === 'REQUEST_DOCS' && !item.invoiceType?.startsWith('5.');
+    return item.source === 'REQUEST_DOCS';
   }
 
   openPurchasePreview(item: OfficeMyDataDashboard['exceptions'][number]): void {

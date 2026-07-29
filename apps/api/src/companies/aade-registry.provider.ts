@@ -46,7 +46,7 @@ export class AadeRegistryProvider {
 
     if (!username || !password) {
       throw new BadRequestException(
-        'Missing AADE registry credentials. Set AADE_REGISTRY_USERNAME and AADE_REGISTRY_PASSWORD.',
+        'Δεν έχουν ρυθμιστεί οι ειδικοί κωδικοί Μητρώου ΑΑΔΕ. Στα Windows εκτελέστε το CONFIGURE-AADE-WINDOWS.cmd.',
       );
     }
 

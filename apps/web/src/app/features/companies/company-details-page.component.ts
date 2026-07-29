@@ -231,7 +231,8 @@ import { MyDataApiService } from '../../core/api/mydata-api.service';
                 <option value="">Κάθε τύπος</option>
                 <option value="SALES_INVOICE">Τιμολόγιο πώλησης</option>
                 <option value="PURCHASE_INVOICE">Τιμολόγιο αγοράς</option>
-                <option value="CREDIT_NOTE">Πιστωτικό</option>
+                <option value="CREDIT_NOTE">Πιστωτικό πώλησης</option>
+                <option value="PURCHASE_CREDIT_NOTE">Πιστωτικό προμηθευτή</option>
                 <option value="RETAIL_RECEIPT">Λιανική</option>
               </select>
             </label>
@@ -800,7 +801,7 @@ export class CompanyDetailsPageComponent {
     map((documents) => ({
       documents,
       salesTotal: sumByMovement(documents, ['SALE_INVOICE', 'CREDIT_NOTE']),
-      purchasesTotal: sumByMovement(documents, ['PURCHASE_INVOICE']),
+      purchasesTotal: sumByMovement(documents, ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE']),
       vatTotal: documents.reduce((sum, document) => sum + Number(document.vatAmount || 0), 0),
     })),
   );
@@ -974,7 +975,8 @@ export class CompanyDetailsPageComponent {
     const labels: Record<string, string> = {
       SALE_INVOICE: 'Πώληση',
       PURCHASE_INVOICE: 'Αγορά / δαπάνη',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
     };
 
     return code ? (labels[code] ?? code) : '-';
@@ -995,7 +997,8 @@ export class CompanyDetailsPageComponent {
     const labels: Record<string, string> = {
       SALES_INVOICE: 'Τιμολόγιο πώλησης',
       PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
       RETAIL_RECEIPT: 'Απόδειξη λιανικής',
     };
 
@@ -1051,7 +1054,13 @@ export class CompanyDetailsPageComponent {
 function sumByMovement(documents: DocumentListItem[], movementCodes: string[]): number {
   return documents
     .filter((document) => movementCodes.includes(document.movementCode ?? ''))
-    .reduce((sum, document) => sum + Number(document.netAmount || 0), 0);
+    .reduce(
+      (sum, document) =>
+        sum +
+        Number(document.netAmount || 0) *
+          (['CREDIT_NOTE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType) ? -1 : 1),
+      0,
+    );
 }
 
 function emptyToUndefined(value: string): string | undefined {

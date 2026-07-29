@@ -1,11 +1,22 @@
 # Ρύθμιση και ασφάλεια ΑΑΔΕ
 
 Η σύνδεση με ΑΑΔΕ είναι προαιρετική και δεν απαιτείται για την πρώτη εγκατάσταση του Open
-Logistirio. Η κανονική Windows εγκατάσταση ξεκινά με περιβάλλον myDATA `test`, απενεργοποιημένες
-production αναγνώσεις και απενεργοποιημένες production εγγραφές.
+Logistirio. Η κανονική Windows εγκατάσταση ζητά προαιρετικά τους ειδικούς κωδικούς ΑΑΔΕ και,
+όταν δοθούν myDATA credentials, ρυθμίζει το πραγματικό production περιβάλλον. Αν παραλειφθούν,
+η εφαρμογή εμφανίζει «ΑΑΔΕ μη ρυθμισμένη» και όχι παραπλανητική ένδειξη test mode.
 
-Ο οδηγός αυτός απευθύνεται σε τεχνικό διαχειριστή μαζί με τον υπεύθυνο λογιστή. Οι πραγματικές
-production εγγραφές δεν ενεργοποιούνται ως μέρος εγκατάστασης, ενημέρωσης ή smoke test.
+Κάθε πραγματική αποστολή εξακολουθεί να απαιτεί εξουσιοδοτημένο πελάτη και ρητή ενέργεια χρήστη
+μέσα στην εφαρμογή. Καμία αποστολή δεν γίνεται κατά την εγκατάσταση ή ως smoke test.
+
+## Ρύθμιση σε Windows
+
+Στην πρώτη εγκατάσταση το `INSTALL-WINDOWS.cmd` ζητά τα credentials πριν ανοίξει την αρχική φόρμα
+γραφείου/admin. Σε υπάρχουσα εγκατάσταση κάντε διπλό κλικ στο
+`CONFIGURE-AADE-WINDOWS.cmd`. Το password και το subscription key πληκτρολογούνται κρυφά.
+
+Οι τιμές αποθηκεύονται στο `%LOCALAPPDATA%\OpenLogistirio\.env.production`, με πρόσβαση
+περιορισμένη στον τρέχοντα λογαριασμό Windows, και φορτώνονται ξανά με αυτόματο recreate μόνο του
+API container. Δεν χρειάζεται χειροκίνητη επεξεργασία `.env`.
 
 ## Ποια credentials χρησιμοποιούνται
 
@@ -24,7 +35,7 @@ production εγγραφές δεν ενεργοποιούνται ως μέρο�
 Τα secrets παραμένουν server-side. Δεν τα βάζουμε σε Git, ticket, screenshot, log ή backup report
 και δεν τα εμφανίζουμε στον browser. Μετά από αλλαγή secret απαιτείται restart του API.
 
-## myDATA test environment
+## myDATA environments
 
 Στο environment file που χρησιμοποιεί το API, κρατήστε:
 
@@ -75,12 +86,12 @@ AADE_MYDATA_CLIENT_111222333_SUBSCRIPTION_KEY=client-mydata-subscription-key
 
 Η τρέχουσα υλοποίηση περιλαμβάνει:
 
-- προετοιμασία XML, mock send και guarded test `SendInvoices` για εκδοθέντα παραστατικά πωλήσεων,
+- προετοιμασία XML και guarded `SendInvoices` για εκδοθέντα παραστατικά πωλήσεων,
 - `RequestDocs` και `RequestTransmittedDocs` με αποθήκευση snapshot και reconciliation,
 - δημιουργία ελεγχόμενων εισερχόμενων αγορών από reviewed myDATA inbox,
 - expense/receiver classification με `SendExpensesClassification?postPerInvoice=true` για αγορά
   που έχει ήδη συσχετιστεί με επίσημο MARK,
-- guarded test `CancelInvoice` για εκδοθέν παραστατικό που έχει ήδη MARK,
+- guarded `CancelInvoice` για εκδοθέν παραστατικό που έχει ήδη MARK,
 - ιστορικό προσπαθειών με environment, endpoint, correlation id, failure payload και forced-retry
   marker,
 - explicit retry μόνο μετά από προσπάθεια σε κατάσταση `FAILED`· παραστατικό σε κατάσταση `SENT`
@@ -113,12 +124,14 @@ official myDATA v2.0.1 XSDs. Μη έγκυρο XML απορρίπτεται το
 Πριν από οποιαδήποτε production εγγραφή απαιτούνται όλα τα παρακάτω:
 
 1. `AADE_MYDATA_ENV=production`.
-2. `AADE_MYDATA_PRODUCTION_ENABLED=true` μόνο για το εγκεκριμένο χρονικό διάστημα.
+2. `AADE_MYDATA_PRODUCTION_ENABLED=true`.
 3. Επανέλεγχος των τελευταίων επίσημων τεχνικών προδιαγραφών, XSDs και URLs.
 4. Επιβεβαίωση credentials και εξουσιοδότησης εκτός browser.
 5. Φρέσκια προεπισκόπηση και ρητή έγκριση accountant/admin μέσα στην εφαρμογή.
 
-Production αποστολή δεν χρησιμοποιείται ποτέ ως smoke test.
+Το flag δεν προκαλεί αυτόματη αποστολή: κάθε write ξεκινά μόνο από συγκεκριμένη ενέργεια χρήστη
+και περνά τους ελέγχους/εγκρίσεις της εφαρμογής. Production αποστολή δεν χρησιμοποιείται ποτέ ως
+smoke test.
 
 ## Προγραμματισμένο read-only sync
 

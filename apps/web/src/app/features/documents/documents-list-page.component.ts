@@ -91,7 +91,8 @@ import {
               <option value="">Όλοι</option>
               <option value="SALES_INVOICE">Τιμολόγια πώλησης</option>
               <option value="PURCHASE_INVOICE">Τιμολόγια αγοράς</option>
-              <option value="CREDIT_NOTE">Πιστωτικά</option>
+              <option value="CREDIT_NOTE">Πιστωτικά πώλησης</option>
+              <option value="PURCHASE_CREDIT_NOTE">Πιστωτικά προμηθευτών</option>
               <option value="RETAIL_RECEIPT">Αποδείξεις λιανικής</option>
             </select>
           </label>
@@ -1120,7 +1121,7 @@ export class DocumentsListPageComponent {
   }
 
   supportsExpenseReceiver(document: DocumentListItem): boolean {
-    return document.documentType === 'PURCHASE_INVOICE';
+    return ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType);
   }
 
   canPrepareExpense(document: DocumentListItem): boolean {
@@ -1133,7 +1134,7 @@ export class DocumentsListPageComponent {
 
   canSelectExpense(document: DocumentListItem): boolean {
     return (
-      document.documentType === 'PURCHASE_INVOICE' &&
+      this.supportsExpenseReceiver(document) &&
       document.classificationStatus === 'EXPENSE_PREPARED' &&
       ['PENDING', 'APPROVED'].includes(
         document.expenseClassificationApprovalStatus ?? '',
@@ -1224,7 +1225,8 @@ export class DocumentsListPageComponent {
     const labels: Record<string, string> = {
       SALE_INVOICE: 'Πώληση',
       PURCHASE_INVOICE: 'Αγορά / δαπάνη',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
     };
 
     return code ? (labels[code] ?? code) : '-';
@@ -1257,7 +1259,8 @@ export class DocumentsListPageComponent {
     const labels: Record<string, string> = {
       SALES_INVOICE: 'Τιμολόγιο πώλησης',
       PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
       RETAIL_RECEIPT: 'Απόδειξη λιανικής',
     };
     return labels[documentType] ?? documentType;

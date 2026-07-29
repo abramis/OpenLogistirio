@@ -68,6 +68,18 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
             <span class="material-symbols-outlined">inventory_2</span>
             <span>Πάγια</span>
           </a>
+          <a class="nav-item" routerLink="/annual-tax" routerLinkActive="active">
+            <span class="material-symbols-outlined">request_quote</span>
+            <span>Ετήσιο κλείσιμο</span>
+          </a>
+          <a class="nav-item" routerLink="/payroll" routerLinkActive="active">
+            <span class="material-symbols-outlined">payments</span>
+            <span>Μισθοδοσία</span>
+          </a>
+          <a class="nav-item" routerLink="/withholding-tax" routerLinkActive="active">
+            <span class="material-symbols-outlined">percent</span>
+            <span>Παρακρατούμενοι</span>
+          </a>
           <div class="nav-label">Εργαλεία γραφείου</div>
           <a class="nav-item" routerLink="/digital-movement" routerLinkActive="active">
             <span class="material-symbols-outlined">local_shipping</span>
@@ -122,13 +134,19 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
           <div class="ws-label">Ενεργό γραφείο</div>
           <div class="ws-name">{{ auth.user()?.accountingOffice?.name || 'Open Logistirio' }}</div>
           <span class="aade-badge" *ngIf="myDataEnvironment$ | async as environment">
-            <span class="material-symbols-outlined">science</span>
+            <span class="material-symbols-outlined">{{
+              environment.environment === 'production' ? 'verified_user' : 'science'
+            }}</span>
             {{
-              environment.productionWriteEnabled
-                ? 'AADE production writes'
-                : environment.productionReadEnabled
-                  ? 'AADE production read-only'
-                  : 'AADE test mode'
+              !environment.credentialsConfigured
+                ? 'ΑΑΔΕ μη ρυθμισμένη'
+                : environment.productionWriteEnabled
+                  ? 'ΑΑΔΕ παραγωγής'
+                  : environment.productionReadEnabled
+                    ? 'ΑΑΔΕ παραγωγής — ανάγνωση'
+                    : environment.environment === 'production'
+                      ? 'ΑΑΔΕ παραγωγής — κλειδωμένη'
+                      : 'ΑΑΔΕ δοκιμών'
             }}
           </span>
           <div class="build-info" *ngIf="systemHealth$ | async as health">

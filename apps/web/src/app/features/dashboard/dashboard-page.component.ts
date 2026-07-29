@@ -644,7 +644,8 @@ export class DashboardPageComponent {
     const labels: Record<string, string> = {
       SALES_INVOICE: 'Τιμολόγιο πώλησης',
       PURCHASE_INVOICE: 'Τιμολόγιο αγοράς',
-      CREDIT_NOTE: 'Πιστωτικό',
+      CREDIT_NOTE: 'Πιστωτικό πώλησης',
+      PURCHASE_CREDIT_NOTE: 'Πιστωτικό προμηθευτή',
       RETAIL_RECEIPT: 'Απόδειξη λιανικής',
     };
 
@@ -742,7 +743,8 @@ function toCockpitVm(
 
 function isExpenseDocument(document: DocumentListItem): boolean {
   return (
-    document.movementCode === 'PURCHASE_INVOICE' || document.documentType === 'PURCHASE_INVOICE'
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.movementCode ?? '') ||
+    ['PURCHASE_INVOICE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType)
   );
 }
 
@@ -750,7 +752,7 @@ function signedAmount(
   document: DocumentListItem,
   field: 'netAmount' | 'vatAmount' | 'totalAmount',
 ): number {
-  const sign = document.documentType === 'CREDIT_NOTE' ? -1 : 1;
+  const sign = ['CREDIT_NOTE', 'PURCHASE_CREDIT_NOTE'].includes(document.documentType) ? -1 : 1;
   return Number(document[field] || 0) * sign;
 }
 

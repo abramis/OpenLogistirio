@@ -48,8 +48,14 @@ export class MyDataController {
   @Get('environment')
   environment() {
     const environment = this.configService.get<'test' | 'production'>('AADE_MYDATA_ENV', 'test');
+    const userId = this.configService.get<string>('AADE_MYDATA_USER_ID');
+    const subscriptionKey = this.configService.get<string>('AADE_MYDATA_SUBSCRIPTION_KEY');
+    const registryUsername = this.configService.get<string>('AADE_REGISTRY_USERNAME');
+    const registryPassword = this.configService.get<string>('AADE_REGISTRY_PASSWORD');
     return {
       environment,
+      credentialsConfigured: Boolean(userId?.trim() && subscriptionKey?.trim()),
+      registryConfigured: Boolean(registryUsername?.trim() && registryPassword?.trim()),
       productionReadEnabled:
         environment === 'production' &&
         this.configService.get<boolean>('AADE_MYDATA_PRODUCTION_READ_ENABLED', false),
