@@ -216,6 +216,38 @@ import {
           <span class="material-symbols-outlined">info</span>
           Δεν αποθηκεύονται TAXISnet κωδικοί ή πραγματικά subscription keys στη βάση.
         </p>
+        <label class="field wide toggle-field">
+          <input formControlName="viesEnabled" type="checkbox" class="toggle-input" />
+          <span>Υπάγεται σε VIES</span>
+        </label>
+        <label class="field wide toggle-field">
+          <input formControlName="intrastatArrivalsEnabled" type="checkbox" class="toggle-input" />
+          <span>Intrastat — αφίξεις</span>
+        </label>
+        <label class="field wide toggle-field">
+          <input
+            formControlName="intrastatDispatchesEnabled"
+            type="checkbox"
+            class="toggle-input"
+          />
+          <span>Intrastat — αποστολές</span>
+        </label>
+        <label class="field wide toggle-field">
+          <input
+            formControlName="collectiveAgreementEnabled"
+            type="checkbox"
+            class="toggle-input"
+          />
+          <span>Ειδική συλλογική σύμβαση εργασίας</span>
+        </label>
+        <label class="field wide toggle-field">
+          <input
+            formControlName="digitalMovementAadeEnabled"
+            type="checkbox"
+            class="toggle-input"
+          />
+          <span>Ψηφιακή διακίνηση με πραγματική διαβίβαση ΑΑΔΕ</span>
+        </label>
       </fieldset>
 
       <fieldset class="form-section" *ngIf="activeTab === 'contact'">
@@ -438,6 +470,11 @@ export class CompanyFormPageComponent implements OnInit {
     myDataMode: ['ACCOUNTING_OFFICE_AUTHORIZED'],
     myDataAuthorized: [false],
     myDataCredentialRef: ['', [Validators.pattern(/^[A-Z0-9_]*$/)]],
+    viesEnabled: [false],
+    intrastatArrivalsEnabled: [false],
+    intrastatDispatchesEnabled: [false],
+    collectiveAgreementEnabled: [false],
+    digitalMovementAadeEnabled: [false],
     fiscalYearStart: [1, [Validators.min(1), Validators.max(12)]],
     fiscalYearEnd: [12, [Validators.min(1), Validators.max(12)]],
   });
@@ -467,6 +504,11 @@ export class CompanyFormPageComponent implements OnInit {
           myDataMode: company.myDataMode,
           myDataAuthorized: company.myDataAuthorized,
           myDataCredentialRef: company.myDataCredentialRef ?? '',
+          viesEnabled: company.viesEnabled,
+          intrastatArrivalsEnabled: company.intrastatArrivalsEnabled,
+          intrastatDispatchesEnabled: company.intrastatDispatchesEnabled,
+          collectiveAgreementEnabled: company.collectiveAgreementEnabled,
+          digitalMovementAadeEnabled: company.digitalMovementAadeEnabled,
           fiscalYearStart: company.fiscalYearStart,
           fiscalYearEnd: company.fiscalYearEnd,
         });
@@ -561,6 +603,11 @@ export class CompanyFormPageComponent implements OnInit {
         value.myDataMode === 'OWN_API_CREDENTIALS_ENV_REF'
           ? emptyToUndefined(value.myDataCredentialRef)
           : undefined,
+      viesEnabled: value.viesEnabled,
+      intrastatArrivalsEnabled: value.intrastatArrivalsEnabled,
+      intrastatDispatchesEnabled: value.intrastatDispatchesEnabled,
+      collectiveAgreementEnabled: value.collectiveAgreementEnabled,
+      digitalMovementAadeEnabled: value.digitalMovementAadeEnabled,
       fiscalYearStart: value.fiscalYearStart,
       fiscalYearEnd: value.fiscalYearEnd,
     };
@@ -570,10 +617,7 @@ export class CompanyFormPageComponent implements OnInit {
     const credentialRefControl = this.form.controls.myDataCredentialRef;
 
     if (this.isOwnApiCredentialsMode()) {
-      credentialRefControl.setValidators([
-        Validators.required,
-        Validators.pattern(/^[A-Z0-9_]+$/),
-      ]);
+      credentialRefControl.setValidators([Validators.required, Validators.pattern(/^[A-Z0-9_]+$/)]);
     } else {
       credentialRefControl.setValidators([Validators.pattern(/^[A-Z0-9_]*$/)]);
       credentialRefControl.setValue('', { emitEvent: false });

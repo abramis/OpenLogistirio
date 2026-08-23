@@ -1,5 +1,9 @@
 # Open Logistirio
 
+Current release: **v0.3.0**. The release adds annual AADE certificates, encrypted off-site
+backup with real restore drills, VIES, Intrastat, versioned special collective agreements and
+AADE digital-dispatch lifecycle integration. See [the v0.3 compliance guide](docs/compliance-v030.md).
+
 Το Open Logistirio είναι ένα ανεξάρτητο, ανοιχτού κώδικα ERP για ελληνικά λογιστικά γραφεία.
 Υποστηρίζει πολλαπλούς πελάτες, παραστατικά, λογιστική παρακολούθηση, ΦΠΑ, συμφωνία myDATA,
 πάγια, υποχρεώσεις, εισαγωγές, δικαιολογητικά, audit log και αντίγραφα ασφαλείας.
@@ -49,8 +53,8 @@ terminal, να γράψεις εντολές ή να επεξεργαστείς 
 5. Αν έχεις τους ειδικούς κωδικούς ΑΑΔΕ, συμπλήρωσε όταν ζητηθούν:
    - το ειδικό username/password Μητρώου για την ανάκτηση στοιχείων πελάτη,
    - το username/subscription key του myDATA REST API για production συγχρονισμό και αποστολές.
-   Δεν ζητούνται ποτέ κωδικοί TAXISnet. Μπορείς να παραλείψεις αυτό το βήμα και να κάνεις αργότερα
-   διπλό κλικ στο `CONFIGURE-AADE-WINDOWS.cmd`.
+     Δεν ζητούνται ποτέ κωδικοί TAXISnet. Μπορείς να παραλείψεις αυτό το βήμα και να κάνεις αργότερα
+     διπλό κλικ στο `CONFIGURE-AADE-WINDOWS.cmd`.
 6. Περίμενε να ανοίξει στον browser η σελίδα **Αρχική ρύθμιση** και συμπλήρωσε:
    - επωνυμία, ΑΦΜ και στοιχεία επικοινωνίας του λογιστικού γραφείου,
    - ονοματεπώνυμο και email του πρώτου διαχειριστή,

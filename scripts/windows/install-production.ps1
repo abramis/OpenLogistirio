@@ -65,6 +65,7 @@ try {
     $jwtRefreshSecret = New-OpenLogistirioSecret -ByteCount 48
     $setupToken = New-OpenLogistirioSecret -ByteCount 48
     $restorePassword = New-OpenLogistirioSecret
+    $offsiteBackupPassword = New-OpenLogistirioSecret -ByteCount 48
 
     $lines = @(
       "NODE_ENV=production",
@@ -93,6 +94,16 @@ try {
       "BACKUP_INTERVAL_SECONDS=86400",
       "BACKUP_RETENTION_DAYS=30",
       "BACKUP_MAX_AGE_HOURS=36",
+      "OFFSITE_BACKUP_REPOSITORY=",
+      "OFFSITE_BACKUP_PASSWORD=$offsiteBackupPassword",
+      "OFFSITE_BACKUP_ACCESS_KEY=",
+      "OFFSITE_BACKUP_SECRET_KEY=",
+      "OFFSITE_BACKUP_REGION=eu-central-1",
+      "OFFSITE_BACKUP_INTERVAL_SECONDS=86400",
+      "OFFSITE_BACKUP_KEEP_DAILY=14",
+      "OFFSITE_BACKUP_KEEP_WEEKLY=8",
+      "OFFSITE_BACKUP_KEEP_MONTHLY=12",
+      "OFFSITE_BACKUP_FAILURE_WEBHOOK=",
       "RESTORE_DRILL_MYSQL_ROOT_PASSWORD=$restorePassword",
       "RATE_LIMIT_WINDOW_MS=60000",
       "RATE_LIMIT_MAX=240",
@@ -147,7 +158,7 @@ try {
 
   Write-OpenLogistirioStep "Λήψη της έκδοσης $releaseVersion"
   Invoke-OpenLogistirioCompose -RepositoryRoot $repositoryRoot -EnvironmentFile $environmentFile -ComposeArguments @(
-    "pull", "mysql", "redis", "migrate", "api", "backup", "files-backup", "web"
+    "pull", "mysql", "redis", "migrate", "api", "backup", "files-backup", "offsite-backup", "web"
   )
 
   Write-OpenLogistirioStep "Εκκίνηση βάσης, migrations και εφαρμογής"

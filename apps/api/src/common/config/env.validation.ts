@@ -79,6 +79,46 @@ const environmentSchema = z.object({
     .string()
     .url()
     .default('https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs'),
+  AADE_MYDATA_TEST_REGISTER_TRANSFER_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/RegisterTransfer'),
+  AADE_MYDATA_TEST_CONFIRM_DELIVERY_OUTCOME_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/ConfirmDeliveryOutcome'),
+  AADE_MYDATA_TEST_REJECT_DELIVERY_NOTE_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/RejectDeliveryNote'),
+  AADE_MYDATA_TEST_CANCEL_DELIVERY_NOTE_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/CancelDeliveryNote'),
+  AADE_MYDATA_TEST_GET_DELIVERY_NOTE_STATUS_URL: z
+    .string()
+    .url()
+    .default('https://mydataapidev.aade.gr/GetDeliveryNoteStatus'),
+  AADE_MYDATA_PRODUCTION_REGISTER_TRANSFER_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/RegisterTransfer'),
+  AADE_MYDATA_PRODUCTION_CONFIRM_DELIVERY_OUTCOME_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/ConfirmDeliveryOutcome'),
+  AADE_MYDATA_PRODUCTION_REJECT_DELIVERY_NOTE_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/RejectDeliveryNote'),
+  AADE_MYDATA_PRODUCTION_CANCEL_DELIVERY_NOTE_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/CancelDeliveryNote'),
+  AADE_MYDATA_PRODUCTION_GET_DELIVERY_NOTE_STATUS_URL: z
+    .string()
+    .url()
+    .default('https://mydatapi.aade.gr/myDATA/GetDeliveryNoteStatus'),
   AADE_REGISTRY_USERNAME: z.string().optional(),
   AADE_REGISTRY_PASSWORD: z.string().optional(),
   AADE_REGISTRY_CALLED_BY_VAT: z.string().optional(),

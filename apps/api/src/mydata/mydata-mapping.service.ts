@@ -10,8 +10,14 @@ type DocumentWithCompany = Prisma.DocumentGetPayload<{
 }>;
 type MappableDocument = Omit<
   DocumentWithCompany,
-  'lines' | 'payments' | 'importBatchId' | 'replacesDocumentId' | 'correctsDocumentId'
+  | 'lines'
+  | 'payments'
+  | 'clientCompany'
+  | 'importBatchId'
+  | 'replacesDocumentId'
+  | 'correctsDocumentId'
 > & {
+  clientCompany: { vatNumber: string; myDataMode: MyDataTransmissionMode };
   lines?: InvoiceLine[];
   payments?: PaymentLine[];
 };

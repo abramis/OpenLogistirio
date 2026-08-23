@@ -1,13 +1,13 @@
 {
   "name": "@open-logistirio/web",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Open Logistirio web client",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "ng serve --host 0.0.0.0 --port 4200",
     "build": "ng build",
-    "test": "ng test --watch=false --browsers=ChromeHeadless",
+    "test": "ng test --watch=false --browsers=ChromeHeadlessNoSandbox --karma-config karma.conf.cjs",
     "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {

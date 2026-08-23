@@ -63,6 +63,11 @@ export class CompaniesService {
         myDataCredentialRef: dto.myDataCredentialRef,
         fiscalYearStart: dto.fiscalYearStart,
         fiscalYearEnd: dto.fiscalYearEnd,
+        viesEnabled: dto.viesEnabled,
+        intrastatArrivalsEnabled: dto.intrastatArrivalsEnabled,
+        intrastatDispatchesEnabled: dto.intrastatDispatchesEnabled,
+        collectiveAgreementEnabled: dto.collectiveAgreementEnabled,
+        digitalMovementAadeEnabled: dto.digitalMovementAadeEnabled,
         accountingOfficeId: tenant.accountingOfficeId,
       },
     });
@@ -144,6 +149,11 @@ export class CompaniesService {
       myDataCredentialRef: dto.myDataCredentialRef,
       fiscalYearStart: dto.fiscalYearStart,
       fiscalYearEnd: dto.fiscalYearEnd,
+      viesEnabled: dto.viesEnabled,
+      intrastatArrivalsEnabled: dto.intrastatArrivalsEnabled,
+      intrastatDispatchesEnabled: dto.intrastatDispatchesEnabled,
+      collectiveAgreementEnabled: dto.collectiveAgreementEnabled,
+      digitalMovementAadeEnabled: dto.digitalMovementAadeEnabled,
     };
   }
 

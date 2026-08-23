@@ -120,4 +120,29 @@ export class CreateCompanyDto {
   @Min(1)
   @Max(12)
   fiscalYearEnd?: number;
+
+  @ApiPropertyOptional({ description: 'Υποχρέωση υποβολής ανακεφαλαιωτικών πινάκων VIES.' })
+  @IsOptional()
+  @IsBoolean()
+  viesEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  intrastatArrivalsEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  intrastatDispatchesEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  collectiveAgreementEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  digitalMovementAadeEnabled?: boolean;
 }

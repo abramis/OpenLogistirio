@@ -66,7 +66,9 @@ try {
     "INSTALL-WINDOWS.cmd",
     "START-WINDOWS.cmd",
     "STOP-WINDOWS.cmd",
-    "CONFIGURE-AADE-WINDOWS.cmd"
+    "CONFIGURE-AADE-WINDOWS.cmd",
+    "CONFIGURE-OFFSITE-BACKUP-WINDOWS.cmd",
+    "RUN-BACKUP-DRILL-WINDOWS.cmd"
   ) | ForEach-Object {
     $entryPoint = Join-Path $repositoryRoot $_
     if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
@@ -289,7 +291,7 @@ try {
   $dockerCommands = @(Get-Content -LiteralPath $dockerLog)
   $safeStart = Find-TestLogLine -Lines $dockerCommands -Pattern "up -d --no-build --pull never --no-recreate mysql$"
   $backup = Find-TestLogLine -Lines $dockerCommands -Pattern "--profile maintenance run --rm --no-deps backup-before-update$"
-  $pull = Find-TestLogLine -Lines $dockerCommands -Pattern "pull mysql redis migrate api backup files-backup web$"
+  $pull = Find-TestLogLine -Lines $dockerCommands -Pattern "pull mysql redis migrate api backup files-backup offsite-backup web$"
   $deployment = Find-TestLogLine -Lines $dockerCommands -Pattern "up -d --no-build --pull never$"
   if ($safeStart -lt 0 -or $backup -le $safeStart -or $pull -le $backup -or $deployment -le $pull) {
     throw "The Windows updater did not back up the existing database before pulling and deploying images."

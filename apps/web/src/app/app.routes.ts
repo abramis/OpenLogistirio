@@ -125,9 +125,7 @@ export const routes: Routes = [
   {
     path: 'payroll',
     loadComponent: () =>
-      import('./features/payroll/payroll-page.component').then(
-        (m) => m.PayrollPageComponent,
-      ),
+      import('./features/payroll/payroll-page.component').then((m) => m.PayrollPageComponent),
     canMatch: [authMatchGuard],
   },
   {
@@ -149,6 +147,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/withholding-tax/withholding-tax-page.component').then(
         (m) => m.WithholdingTaxPageComponent,
+      ),
+    canMatch: [authMatchGuard],
+  },
+  {
+    path: 'compliance',
+    loadComponent: () =>
+      import('./features/compliance/compliance-page.component').then(
+        (m) => m.CompliancePageComponent,
       ),
     canMatch: [authMatchGuard],
   },

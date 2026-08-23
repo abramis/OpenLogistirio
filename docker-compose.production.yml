@@ -229,6 +229,80 @@ services:
       retries: 3
       start_period: 2m
 
+  offsite-backup:
+    image: restic/restic:0.18.0
+    restart: unless-stopped
+    entrypoint: ['/bin/sh', '-ec']
+    environment:
+      RESTIC_REPOSITORY: ${OFFSITE_BACKUP_REPOSITORY:-}
+      RESTIC_PASSWORD: ${OFFSITE_BACKUP_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${OFFSITE_BACKUP_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${OFFSITE_BACKUP_SECRET_KEY:-}
+      AWS_DEFAULT_REGION: ${OFFSITE_BACKUP_REGION:-eu-central-1}
+      RESTIC_HOST: ${OFFSITE_BACKUP_HOST:-open-logistirio}
+      OFFSITE_BACKUP_INTERVAL_SECONDS: ${OFFSITE_BACKUP_INTERVAL_SECONDS:-86400}
+      OFFSITE_BACKUP_KEEP_DAILY: ${OFFSITE_BACKUP_KEEP_DAILY:-14}
+      OFFSITE_BACKUP_KEEP_WEEKLY: ${OFFSITE_BACKUP_KEEP_WEEKLY:-8}
+      OFFSITE_BACKUP_KEEP_MONTHLY: ${OFFSITE_BACKUP_KEEP_MONTHLY:-12}
+      OFFSITE_BACKUP_FAILURE_WEBHOOK: ${OFFSITE_BACKUP_FAILURE_WEBHOOK:-}
+    volumes:
+      - backup-data:/data
+    depends_on:
+      backup:
+        condition: service_started
+      files-backup:
+        condition: service_started
+    command:
+      - |
+        status=/data/offsite-backup.status
+        notify_failure() {
+          test -z "$$OFFSITE_BACKUP_FAILURE_WEBHOOK" || wget -qO- \
+            --header='Content-Type: application/json' \
+            --post-data="{\"application\":\"Open Logistirio\",\"event\":\"offsite_backup_failed\",\"host\":\"$$RESTIC_HOST\"}" \
+            "$$OFFSITE_BACKUP_FAILURE_WEBHOOK" >/dev/null 2>&1 || true
+        }
+        if test -z "$$RESTIC_REPOSITORY"; then
+          printf 'configured=false\nstatus=DISABLED\nupdated_at_utc=%s\n' "$$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$$status"
+        fi
+        while true; do
+          if test -z "$$RESTIC_REPOSITORY"; then
+            sleep "$$OFFSITE_BACKUP_INTERVAL_SECONDS"
+            continue
+          fi
+          started=$$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf 'configured=true\nstatus=RUNNING\nstarted_at_utc=%s\nrepository=%s\n' \
+            "$$started" "$$RESTIC_REPOSITORY" > "$$status"
+          if ! restic snapshots --json >/dev/null 2>&1; then
+            restic init
+          fi
+          if snapshot=$$(restic backup /data --tag automated \
+              --exclude '/data/*.partial*' --exclude '/data/offsite-backup.status' \
+              --json | tail -n 1) && \
+            restic forget --tag automated --prune \
+              --keep-daily "$$OFFSITE_BACKUP_KEEP_DAILY" \
+              --keep-weekly "$$OFFSITE_BACKUP_KEEP_WEEKLY" \
+              --keep-monthly "$$OFFSITE_BACKUP_KEEP_MONTHLY"; then
+            snapshot_id=$$(printf '%s' "$$snapshot" | sed -n 's/.*"snapshot_id":"\([^"]*\)".*/\1/p')
+            printf 'configured=true\nstatus=SUCCESS\ncompleted_at_utc=%s\nsnapshot_id=%s\nrepository=%s\n' \
+              "$$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$snapshot_id" "$$RESTIC_REPOSITORY" > "$$status"
+          else
+            printf 'configured=true\nstatus=FAILED\nfailed_at_utc=%s\nrepository=%s\n' \
+              "$$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$RESTIC_REPOSITORY" > "$$status"
+            notify_failure
+          fi
+          sleep "$$OFFSITE_BACKUP_INTERVAL_SECONDS"
+        done
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "grep -q '^status=SUCCESS' /data/offsite-backup.status || grep -q '^status=DISABLED' /data/offsite-backup.status",
+        ]
+      interval: 5m
+      timeout: 15s
+      retries: 3
+      start_period: 2m
+
   restore-drill-db:
     profiles: ['restore-drill']
     image: mysql:8.4
@@ -317,6 +391,80 @@ services:
         } > "/reports/files-restore-drill-$${timestamp}.txt"
         echo "Supporting-documents archive drill passed for $$(basename "$$latest")"
 
+  offsite-restore:
+    profiles: ['offsite-restore-drill']
+    image: restic/restic:0.18.0
+    environment:
+      RESTIC_REPOSITORY: ${OFFSITE_BACKUP_REPOSITORY:-}
+      RESTIC_PASSWORD: ${OFFSITE_BACKUP_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${OFFSITE_BACKUP_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${OFFSITE_BACKUP_SECRET_KEY:-}
+      AWS_DEFAULT_REGION: ${OFFSITE_BACKUP_REGION:-eu-central-1}
+    volumes:
+      - offsite-restore-data:/restore
+    command: ['restore', 'latest', '--tag', 'automated', '--target', '/restore']
+    restart: 'no'
+
+  offsite-restore-drill-db:
+    profiles: ['offsite-restore-drill']
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RESTORE_DRILL_MYSQL_ROOT_PASSWORD:-isolated-restore-drill-only}
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  offsite-restore-drill:
+    profiles: ['offsite-restore-drill']
+    image: mysql:8.4
+    environment:
+      RESTORE_DRILL_MYSQL_ROOT_PASSWORD: ${RESTORE_DRILL_MYSQL_ROOT_PASSWORD:-isolated-restore-drill-only}
+    volumes:
+      - offsite-restore-data:/restore:ro
+      - ./restore-drills:/reports
+    depends_on:
+      offsite-restore:
+        condition: service_completed_successfully
+      offsite-restore-drill-db:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        source_dir=/restore/data
+        latest=$$(find "$$source_dir" -maxdepth 1 -type f -name 'open-logistirio-*.sql' ! -name '*-pre-restore.sql' | sort | tail -n 1)
+        files=$$(find "$$source_dir" -maxdepth 1 -type f -name 'open-logistirio-files-*.tar.gz' | sort | tail -n 1)
+        test -n "$$latest" && test -s "$$latest"
+        test -n "$$files" && test -s "$$files"
+        cd "$$source_dir"
+        sha256sum -c "$$(basename "$$latest").sha256"
+        sha256sum -c "$$(basename "$$files").sha256"
+        tar -tzf "$$files" >/dev/null
+        MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=offsite-restore-drill-db --user=root \
+          --execute='CREATE DATABASE restore_drill CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+        MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=offsite-restore-drill-db --user=root restore_drill < "$$latest"
+        migration_count=$$(MYSQL_PWD="$$RESTORE_DRILL_MYSQL_ROOT_PASSWORD" mysql \
+          --host=offsite-restore-drill-db --user=root --batch --skip-column-names restore_drill \
+          --execute='SELECT COUNT(*) FROM _prisma_migrations')
+        test "$$migration_count" -gt 0
+        timestamp=$$(date -u +%Y%m%d-%H%M%S)
+        {
+          echo 'status=PASSED'
+          echo "completed_at_utc=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "source=offsite-restic-latest"
+          echo "database_backup=$$(basename "$$latest")"
+          echo "documents_archive=$$(basename "$$files")"
+          echo "applied_migrations=$$migration_count"
+        } > "/reports/offsite-restore-drill-$${timestamp}.txt"
+        echo 'Off-site restore drill passed.'
+    restart: 'no'
+
   web:
     image: '${OPEN_LOGISTIRIO_WEB_IMAGE:-ghcr.io/abramis/openlogistirio-web}:${APP_VERSION:?Set APP_VERSION}'
     build:
@@ -334,3 +482,4 @@ volumes:
   redis-data:
   backup-data:
   supporting-documents-data:
+  offsite-restore-data:

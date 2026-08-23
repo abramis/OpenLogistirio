@@ -85,13 +85,7 @@ export interface DispatchNote {
   number: string;
   issueDate: string;
   plannedDispatchAt: string;
-  status:
-    | 'DRAFT'
-    | 'ISSUED'
-    | 'COMPLETED'
-    | 'PARTIALLY_RECEIVED'
-    | 'REJECTED'
-    | 'CANCELLED';
+  status: 'DRAFT' | 'ISSUED' | 'COMPLETED' | 'PARTIALLY_RECEIVED' | 'REJECTED' | 'CANCELLED';
   movePurpose: number;
   otherMovePurposeTitle?: string | null;
   recipientName?: string | null;
@@ -103,7 +97,21 @@ export interface DispatchNote {
   loadingAddress: string;
   deliveryAddress: string;
   notes?: string | null;
-  clientCompany: { id: string; legalName: string; vatNumber: string };
+  clientCompany: {
+    id: string;
+    legalName: string;
+    vatNumber: string;
+    digitalMovementAadeEnabled: boolean;
+  };
+  aadeStatus: 'NOT_REQUIRED' | 'PENDING' | 'TRANSMITTED' | 'FAILED' | 'CANCELLED';
+  aadeInvoiceMark?: string | null;
+  aadeInvoiceUid?: string | null;
+  aadeQrUrl?: string | null;
+  aadeTransferMark?: string | null;
+  aadeDeliveryOutcomeMark?: string | null;
+  aadeRejectMark?: string | null;
+  aadeCancellationMark?: string | null;
+  aadeLastError?: string | null;
   loadingWarehouse: Warehouse;
   deliveryWarehouse?: Warehouse | null;
   vehicle?: Vehicle | null;
@@ -122,11 +130,7 @@ export interface WarehouseStock {
 export interface StockMovement {
   id: string;
   kind:
-    | 'ADJUSTMENT'
-    | 'DISPATCH_OUT'
-    | 'DELIVERY_IN'
-    | 'CANCEL_OUT_REVERSAL'
-    | 'CANCEL_IN_REVERSAL';
+    'ADJUSTMENT' | 'DISPATCH_OUT' | 'DELIVERY_IN' | 'CANCEL_OUT_REVERSAL' | 'CANCEL_IN_REVERSAL';
   quantity: number;
   signedQuantity: number;
   occurredAt: string;
@@ -224,14 +228,35 @@ export class DigitalMovementApiService {
   }
 
   complete(id: string, payload: CompleteDeliveryPayload = {}): Observable<DispatchNote> {
-    return this.http.post<DispatchNote>(
-      `${this.baseUrl}/dispatch-notes/${id}/complete`,
-      payload,
-    );
+    return this.http.post<DispatchNote>(`${this.baseUrl}/dispatch-notes/${id}/complete`, payload);
   }
 
   cancel(id: string): Observable<DispatchNote> {
     return this.http.post<DispatchNote>(`${this.baseUrl}/dispatch-notes/${id}/cancel`, {});
+  }
+
+  transmitAade(id: string): Observable<DispatchNote> {
+    return this.http.post<DispatchNote>(`${this.baseUrl}/dispatch-notes/${id}/aade/transmit`, {});
+  }
+
+  registerAadeTransfer(
+    id: string,
+    payload: { transportType: number; carrierVatNumber: string; vehicleNumber?: string },
+  ): Observable<DispatchNote> {
+    return this.http.post<DispatchNote>(
+      `${this.baseUrl}/dispatch-notes/${id}/aade/register-transfer`,
+      payload,
+    );
+  }
+
+  confirmAadeDelivery(id: string, outcome: 'FULL' | 'PARTIAL' | 'NONE'): Observable<DispatchNote> {
+    return this.http.post<DispatchNote>(`${this.baseUrl}/dispatch-notes/${id}/aade/confirm`, {
+      outcome,
+    });
+  }
+
+  cancelAade(id: string): Observable<DispatchNote> {
+    return this.http.post<DispatchNote>(`${this.baseUrl}/dispatch-notes/${id}/aade/cancel`, {});
   }
 
   findStock(clientCompanyId = ''): Observable<WarehouseStock[]> {

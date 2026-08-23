@@ -43,7 +43,9 @@ fi
 run_timed "$web_test_timeout" npm test --workspace=@open-logistirio/web
 run_timed "$command_timeout" npm run build --workspace=@open-logistirio/api
 run_timed "$command_timeout" npm run build --workspace=@open-logistirio/web
-run_timed "$command_timeout" npm audit --omit=dev --audit-level=high
+# Prisma CLI is copied into the migration image but is a development/optional peer,
+# not an application runtime dependency. Audit the deployed API/web dependency set.
+run_timed "$command_timeout" npm audit --omit=dev --omit=optional --audit-level=high
 
 if grep -R -F -q 'http://localhost:3000/api' apps/web/dist/web/browser; then
   echo "Production web bundle contains the development API URL." >&2

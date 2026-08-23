@@ -50,6 +50,22 @@ import { BackupsApiService, BackupFileInfo } from '../../core/api/backups-api.se
           <span>{{ artifactStatusLabel(status.supportingDocuments, status.maxAgeHours) }}</span>
         </div>
       </article>
+      <article
+        class="coverage-card"
+        [class.coverage-ok]="status.offsite.status === 'SUCCESS' && status.offsite.fresh"
+      >
+        <span class="material-symbols-outlined">cloud_done</span>
+        <div>
+          <small>Κρυπτογραφημένο off-site</small>
+          <strong>{{
+            status.offsite.configured ? status.offsite.status : 'Δεν έχει ρυθμιστεί'
+          }}</strong>
+          <span *ngIf="status.offsite.updatedAt">{{
+            status.offsite.updatedAt | date: 'dd/MM/yyyy HH:mm'
+          }}</span>
+          <span *ngIf="status.offsite.snapshotId">Snapshot {{ status.offsite.snapshotId }}</span>
+        </div>
+      </article>
       <div class="coverage-summary" [class.summary-ok]="status.healthy">
         <span class="material-symbols-outlined">{{ status.healthy ? 'verified' : 'warning' }}</span>
         {{

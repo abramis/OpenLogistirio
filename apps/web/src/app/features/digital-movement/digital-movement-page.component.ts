@@ -357,8 +357,35 @@ type Tab = 'dispatch' | 'stock' | 'items' | 'warehouses' | 'vehicles';
                 <span class="badge" [ngClass]="statusClass(note.status)">{{
                   statusLabel(note.status)
                 }}</span>
+                <small *ngIf="note.clientCompany.digitalMovementAadeEnabled">
+                  ΑΑΔΕ: {{ note.aadeInvoiceMark || note.aadeLastError || note.aadeStatus }}
+                </small>
               </td>
               <td class="row-actions">
+                <button
+                  *ngIf="
+                    note.status === 'DRAFT' &&
+                    note.clientCompany.digitalMovementAadeEnabled &&
+                    !note.aadeInvoiceMark
+                  "
+                  class="btn btn-xs btn-secondary"
+                  type="button"
+                  (click)="aadeTransmit(note)"
+                >
+                  Αποστολή ΑΑΔΕ
+                </button>
+                <button
+                  *ngIf="
+                    note.status === 'ISSUED' &&
+                    note.clientCompany.digitalMovementAadeEnabled &&
+                    !note.aadeDeliveryOutcomeMark
+                  "
+                  class="btn btn-xs btn-secondary"
+                  type="button"
+                  (click)="aadeConfirm(note)"
+                >
+                  Παραλαβή ΑΑΔΕ
+                </button>
                 <button
                   *ngIf="note.status === 'DRAFT'"
                   class="btn btn-xs btn-primary"
@@ -476,11 +503,16 @@ type Tab = 'dispatch' | 'stock' | 'items' | 'warehouses' | 'vehicles';
               <td>{{ movement.item.code }} — {{ movement.item.name }}</td>
               <td>{{ movementKindLabel(movement.kind) }}</td>
               <td>
-                {{ movement.dispatchNote
-                  ? movement.dispatchNote.series + '-' + movement.dispatchNote.number
-                  : '-' }}
+                {{
+                  movement.dispatchNote
+                    ? movement.dispatchNote.series + '-' + movement.dispatchNote.number
+                    : '-'
+                }}
               </td>
-              <td [class.positive]="movement.signedQuantity > 0" [class.negative]="movement.signedQuantity < 0">
+              <td
+                [class.positive]="movement.signedQuantity > 0"
+                [class.negative]="movement.signedQuantity < 0"
+              >
                 {{ movement.signedQuantity | number: '1.0-3' }}
               </td>
             </tr>
@@ -1000,6 +1032,26 @@ export class DigitalMovementPageComponent implements OnInit {
     });
   }
 
+  aadeTransmit(note: DispatchNote): void {
+    if (!confirm(`Πραγματική διαβίβαση του ${note.series}-${note.number} στην ΑΑΔΕ;`)) return;
+    this.api
+      .transmitAade(note.id)
+      .subscribe({
+        next: () => this.done('Η διαβίβαση στην ΑΑΔΕ ολοκληρώθηκε.'),
+        error: (error) => this.handleError(error),
+      });
+  }
+
+  aadeConfirm(note: DispatchNote): void {
+    if (!confirm('Καταχώριση πλήρους παραλαβής στην ΑΑΔΕ;')) return;
+    this.api
+      .confirmAadeDelivery(note.id, 'FULL')
+      .subscribe({
+        next: () => this.done('Η παραλαβή καταχωρίστηκε στην ΑΑΔΕ.'),
+        error: (error) => this.handleError(error),
+      });
+  }
+
   openReceipt(note: DispatchNote): void {
     this.receivingNote = note;
     this.receiptForm = {
@@ -1055,12 +1107,14 @@ export class DigitalMovementPageComponent implements OnInit {
       });
   }
 
-  receiptMissing(line: { orderedQuantity: number; acceptedQuantity: number; rejectedQuantity: number }) {
+  receiptMissing(line: {
+    orderedQuantity: number;
+    acceptedQuantity: number;
+    rejectedQuantity: number;
+  }) {
     return Math.max(
       0,
-      Number(line.orderedQuantity) -
-        Number(line.acceptedQuantity) -
-        Number(line.rejectedQuantity),
+      Number(line.orderedQuantity) - Number(line.acceptedQuantity) - Number(line.rejectedQuantity),
     );
   }
 

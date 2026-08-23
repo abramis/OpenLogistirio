@@ -3,6 +3,7 @@ import {
   AuditAction,
   DeliveryOutcome,
   DispatchEventType,
+  DispatchAadeStatus,
   DispatchNoteStatus,
   Prisma,
   StockMovementKind,
@@ -10,6 +11,14 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
+import { AadeMyDataTestProvider } from '../mydata/aade-mydata-test.provider';
+import { AadeDigitalMovementProvider } from './aade-digital-movement.provider';
+import { buildAadeDispatchXml } from './aade-dispatch-xml';
+import {
+  ConfirmAadeDeliveryDto,
+  RegisterAadeTransferDto,
+  RejectAadeDeliveryDto,
+} from './dto/aade-dispatch.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { CompleteDispatchNoteDto } from './dto/complete-dispatch-note.dto';
 import {
@@ -27,7 +36,15 @@ import {
 } from './dto/digital-movement-query.dto';
 
 const dispatchInclude = {
-  clientCompany: { select: { id: true, legalName: true, vatNumber: true } },
+  clientCompany: {
+    select: {
+      id: true,
+      legalName: true,
+      vatNumber: true,
+      digitalMovementAadeEnabled: true,
+      myDataCredentialRef: true,
+    },
+  },
   counterparty: true,
   loadingWarehouse: true,
   deliveryWarehouse: true,
@@ -42,6 +59,8 @@ export class DigitalMovementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly myDataProvider?: AadeMyDataTestProvider,
+    private readonly aadeMovement?: AadeDigitalMovementProvider,
   ) {}
 
   findItems(tenant: TenantContext, query: CompanyScopedQueryDto = {}) {
@@ -296,10 +315,178 @@ export class DigitalMovementService {
     return note;
   }
 
+  async transmitToAade(tenant: TenantContext, id: string) {
+    const note = await this.getDispatch(tenant, id);
+    this.assertAadeScope(note);
+    if (note.status !== DispatchNoteStatus.DRAFT || note.aadeInvoiceMark) {
+      throw new BadRequestException(
+        'Μόνο μη διαβιβασμένο προσχέδιο μπορεί να αποσταλεί στην ΑΑΔΕ.',
+      );
+    }
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: {
+        aadeStatus: DispatchAadeStatus.PENDING,
+        aadeLastAttemptAt: new Date(),
+        aadeLastError: null,
+      },
+    });
+    try {
+      const response = await this.myDataProvider!.transmitInvoice({
+        documentId: id,
+        payloadXml: buildAadeDispatchXml(note),
+        credentialEnvPrefix: note.clientCompany.myDataCredentialRef ?? undefined,
+      });
+      if (response.status !== 'sent' || !response.mark) {
+        throw new Error(response.errorMessage ?? 'Η ΑΑΔΕ δεν επέστρεψε MARK.');
+      }
+      await this.prisma.dispatchNote.update({
+        where: { id },
+        data: {
+          aadeStatus: DispatchAadeStatus.TRANSMITTED,
+          aadeInvoiceMark: response.mark,
+          aadeInvoiceUid: response.uid,
+          aadeQrUrl: response.qrUrl,
+          aadeTransmittedAt: new Date(),
+          aadeLastError: null,
+        },
+      });
+      await this.audit(tenant, AuditAction.UPDATE, 'DispatchNote', id, {
+        aadeAction: 'SEND_DELIVERY_NOTE',
+        mark: response.mark,
+        uid: response.uid ?? null,
+      });
+      return this.getDispatch(tenant, id);
+    } catch (error) {
+      await this.recordAadeFailure(id, error);
+      throw error;
+    }
+  }
+
+  async registerAadeTransfer(tenant: TenantContext, id: string, dto: RegisterAadeTransferDto) {
+    const note = await this.getDispatch(tenant, id);
+    this.assertAadeScope(note);
+    if (!note.aadeQrUrl)
+      throw new BadRequestException('Δεν υπάρχει QR URL της ΑΑΔΕ για το δελτίο.');
+    const response = await this.aadeMovement!.registerTransfer(
+      note.clientCompany.myDataCredentialRef,
+      note.aadeQrUrl,
+      {
+        transportDetail: {
+          transportType: dto.transportType,
+          carrierVatNumber: dto.carrierVatNumber,
+          vehicleNumber: dto.vehicleNumber ?? note.vehicleNumber,
+          pNumber: dto.pNumber,
+          timeStamp: new Date().toISOString(),
+        },
+      },
+    );
+    if (!response.ok || !response.mark) return this.aadeFailureResult(id, response.error);
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: { aadeTransferMark: response.mark, aadeLastAttemptAt: new Date(), aadeLastError: null },
+    });
+    return this.getDispatch(tenant, id);
+  }
+
+  async confirmAadeDelivery(tenant: TenantContext, id: string, dto: ConfirmAadeDeliveryDto) {
+    const note = await this.getDispatch(tenant, id);
+    this.assertAadeScope(note);
+    if (!note.aadeQrUrl)
+      throw new BadRequestException('Δεν υπάρχει QR URL της ΑΑΔΕ για το δελτίο.');
+    const response = await this.aadeMovement!.confirmDelivery(
+      note.clientCompany.myDataCredentialRef,
+      note.aadeQrUrl,
+      {
+        outcome: dto.outcome,
+        deliveredWithoutRecipient: dto.deliveredWithoutRecipient ?? false,
+      },
+    );
+    if (!response.ok || !response.mark) return this.aadeFailureResult(id, response.error);
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: {
+        aadeDeliveryOutcomeMark: response.mark,
+        aadeLastAttemptAt: new Date(),
+        aadeLastError: null,
+      },
+    });
+    return this.getDispatch(tenant, id);
+  }
+
+  async rejectAadeDelivery(tenant: TenantContext, id: string, dto: RejectAadeDeliveryDto) {
+    const note = await this.getDispatch(tenant, id);
+    this.assertAadeScope(note);
+    if (!note.aadeQrUrl)
+      throw new BadRequestException('Δεν υπάρχει QR URL της ΑΑΔΕ για το δελτίο.');
+    const response = await this.aadeMovement!.rejectDelivery(
+      note.clientCompany.myDataCredentialRef,
+      note.aadeQrUrl,
+      dto.reason,
+    );
+    if (!response.ok || !response.mark) return this.aadeFailureResult(id, response.error);
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: { aadeRejectMark: response.mark, aadeLastAttemptAt: new Date(), aadeLastError: null },
+    });
+    return this.getDispatch(tenant, id);
+  }
+
+  async cancelAtAade(tenant: TenantContext, id: string) {
+    const note = await this.getDispatch(tenant, id);
+    this.assertAadeScope(note);
+    if (!note.aadeInvoiceMark) throw new BadRequestException('Δεν υπάρχει MARK της ΑΑΔΕ.');
+    const response = await this.aadeMovement!.cancelDelivery(
+      note.clientCompany.myDataCredentialRef,
+      note.aadeInvoiceMark,
+    );
+    if (!response.ok || !response.mark) return this.aadeFailureResult(id, response.error);
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: {
+        aadeStatus: DispatchAadeStatus.CANCELLED,
+        aadeCancellationMark: response.mark,
+        aadeLastAttemptAt: new Date(),
+        aadeLastError: null,
+      },
+    });
+    return this.getDispatch(tenant, id);
+  }
+
+  async syncAadeStatus(tenant: TenantContext, id: string) {
+    const note = await this.getDispatch(tenant, id);
+    this.assertAadeScope(note);
+    if (!note.aadeInvoiceMark) throw new BadRequestException('Δεν υπάρχει MARK της ΑΑΔΕ.');
+    const response = await this.aadeMovement!.getStatus(
+      note.clientCompany.myDataCredentialRef,
+      note.aadeInvoiceMark,
+    );
+    if (!response.ok) return this.aadeFailureResult(id, response.error);
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: {
+        aadeInvoiceUid: response.invoiceUid ?? undefined,
+        aadeQrUrl: response.qrUrl ?? undefined,
+        aadeLastAttemptAt: new Date(),
+        aadeLastError: null,
+      },
+    });
+    return {
+      note: await this.getDispatch(tenant, id),
+      officialStatus: response.status,
+      raw: response.raw,
+    };
+  }
+
   async issueDispatchNote(tenant: TenantContext, id: string) {
     const existing = await this.getDispatch(tenant, id);
     if (existing.status !== DispatchNoteStatus.DRAFT) {
       throw new BadRequestException('Only draft dispatch notes can be issued.');
+    }
+    if (existing.clientCompany.digitalMovementAadeEnabled && !existing.aadeInvoiceMark) {
+      throw new BadRequestException(
+        'Η διαβίβαση του δελτίου στην ΑΑΔΕ πρέπει να ολοκληρωθεί πριν από την έκδοση.',
+      );
     }
 
     const issuedAt = new Date();
@@ -334,14 +521,17 @@ export class DigitalMovementService {
     return this.getDispatch(tenant, id);
   }
 
-  async completeDispatchNote(
-    tenant: TenantContext,
-    id: string,
-    dto: CompleteDispatchNoteDto = {},
-  ) {
+  async completeDispatchNote(tenant: TenantContext, id: string, dto: CompleteDispatchNoteDto = {}) {
     const existing = await this.getDispatch(tenant, id);
     if (existing.status !== DispatchNoteStatus.ISSUED) {
       throw new BadRequestException('Only issued dispatch notes can be completed.');
+    }
+    if (
+      existing.clientCompany.digitalMovementAadeEnabled &&
+      !existing.aadeDeliveryOutcomeMark &&
+      !existing.aadeRejectMark
+    ) {
+      throw new BadRequestException('Καταχωρίστε πρώτα στην ΑΑΔΕ την παραλαβή ή την απόρριψη.');
     }
 
     const completedAt = dto.receivedAt ? new Date(dto.receivedAt) : new Date();
@@ -353,7 +543,9 @@ export class DigitalMovementService {
       if (existing.deliveryWarehouseId) {
         for (const line of existing.lines) {
           if (!line.item.trackInventory) continue;
-          const receiptLine = receiptLines.find((candidate) => candidate.dispatchNoteLineId === line.id)!;
+          const receiptLine = receiptLines.find(
+            (candidate) => candidate.dispatchNoteLineId === line.id,
+          )!;
           if (receiptLine.acceptedQuantity === 0) continue;
           await this.increaseStock(
             tx,
@@ -404,6 +596,13 @@ export class DigitalMovementService {
     if (existing.status === DispatchNoteStatus.CANCELLED) {
       throw new BadRequestException('Dispatch note is already cancelled.');
     }
+    if (
+      existing.clientCompany.digitalMovementAadeEnabled &&
+      existing.aadeInvoiceMark &&
+      !existing.aadeCancellationMark
+    ) {
+      throw new BadRequestException('Ακυρώστε πρώτα το δελτίο στην ΑΑΔΕ.');
+    }
 
     const cancelledAt = new Date();
     await this.prisma.$transaction(async (tx) => {
@@ -421,12 +620,7 @@ export class DigitalMovementService {
             )?.acceptedQuantity ?? 0,
           );
           if (acceptedQuantity === 0) continue;
-          await this.decreaseStock(
-            tx,
-            existing.deliveryWarehouseId,
-            line.itemId,
-            acceptedQuantity,
-          );
+          await this.decreaseStock(tx, existing.deliveryWarehouseId, line.itemId, acceptedQuantity);
           await this.createMovement(
             tx,
             existing,
@@ -576,10 +770,14 @@ export class DigitalMovementService {
 
     const supplied = new Map(dto.lines.map((line) => [line.dispatchNoteLineId, line]));
     if (supplied.size !== dto.lines.length) {
-      throw new BadRequestException('Each dispatch line can appear only once in a delivery receipt.');
+      throw new BadRequestException(
+        'Each dispatch line can appear only once in a delivery receipt.',
+      );
     }
     if (supplied.size !== lines.length || lines.some((line) => !supplied.has(line.id))) {
-      throw new BadRequestException('A delivery receipt must include every dispatch line exactly once.');
+      throw new BadRequestException(
+        'A delivery receipt must include every dispatch line exactly once.',
+      );
     }
 
     return lines.map((line) => {
@@ -597,9 +795,7 @@ export class DigitalMovementService {
         orderedQuantity,
         acceptedQuantity,
         rejectedQuantity,
-        missingQuantity: this.roundQuantity(
-          orderedQuantity - acceptedQuantity - rejectedQuantity,
-        ),
+        missingQuantity: this.roundQuantity(orderedQuantity - acceptedQuantity - rejectedQuantity),
         qualityNotes: receiptLine.qualityNotes?.trim() || undefined,
       };
     });
@@ -657,10 +853,7 @@ export class DigitalMovementService {
 
   private signedMovementQuantity(kind: StockMovementKind, quantity: number) {
     if (kind === StockMovementKind.ADJUSTMENT) return quantity;
-    if (
-      kind === StockMovementKind.DISPATCH_OUT ||
-      kind === StockMovementKind.CANCEL_IN_REVERSAL
-    ) {
+    if (kind === StockMovementKind.DISPATCH_OUT || kind === StockMovementKind.CANCEL_IN_REVERSAL) {
       return -Math.abs(quantity);
     }
     return Math.abs(quantity);
@@ -883,6 +1076,30 @@ export class DigitalMovementService {
       select: { id: true },
     });
     if (!company) throw new NotFoundException('Client company was not found.');
+  }
+
+  private assertAadeScope(note: { clientCompany: { digitalMovementAadeEnabled: boolean } }) {
+    if (!note.clientCompany.digitalMovementAadeEnabled) {
+      throw new BadRequestException('Η επιχείρηση δεν έχει ενεργοποιημένη ψηφιακή διακίνηση ΑΑΔΕ.');
+    }
+  }
+
+  private async recordAadeFailure(id: string, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    await this.prisma.dispatchNote.update({
+      where: { id },
+      data: {
+        aadeStatus: DispatchAadeStatus.FAILED,
+        aadeLastAttemptAt: new Date(),
+        aadeLastError: message.slice(0, 2000),
+      },
+    });
+  }
+
+  private async aadeFailureResult(id: string, error?: string): Promise<never> {
+    const failure = new BadRequestException(error ?? 'Η ΑΑΔΕ απέρριψε την ενέργεια.');
+    await this.recordAadeFailure(id, failure);
+    throw failure;
   }
 
   private async getItem(tenant: TenantContext, id: string) {

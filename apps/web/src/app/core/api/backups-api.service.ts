@@ -30,6 +30,14 @@ export interface BackupOperationsStatus {
   maxAgeHours: number;
   database: BackupArtifactStatus;
   supportingDocuments: BackupArtifactStatus;
+  offsite: {
+    configured: boolean;
+    status: 'DISABLED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'UNKNOWN';
+    updatedAt: string | null;
+    snapshotId: string | null;
+    repository: string | null;
+    fresh: boolean;
+  };
 }
 
 @Injectable({

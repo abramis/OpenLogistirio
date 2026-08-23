@@ -20,6 +20,11 @@ export interface ClientCompany {
   myDataMode: string;
   myDataAuthorized: boolean;
   myDataCredentialRef?: string | null;
+  viesEnabled: boolean;
+  intrastatArrivalsEnabled: boolean;
+  intrastatDispatchesEnabled: boolean;
+  collectiveAgreementEnabled: boolean;
+  digitalMovementAadeEnabled: boolean;
   fiscalYearStart: number;
   fiscalYearEnd: number;
   createdAt: string;
@@ -42,6 +47,11 @@ export interface CompanyPayload {
   myDataMode?: string;
   myDataAuthorized?: boolean;
   myDataCredentialRef?: string;
+  viesEnabled?: boolean;
+  intrastatArrivalsEnabled?: boolean;
+  intrastatDispatchesEnabled?: boolean;
+  collectiveAgreementEnabled?: boolean;
+  digitalMovementAadeEnabled?: boolean;
   fiscalYearStart?: number;
   fiscalYearEnd?: number;
 }

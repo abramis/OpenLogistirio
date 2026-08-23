@@ -6,6 +6,11 @@ import { CurrentTenant } from '../common/decorators/tenant-context.decorator';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { DigitalMovementService } from './digital-movement.service';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+import {
+  ConfirmAadeDeliveryDto,
+  RegisterAadeTransferDto,
+  RejectAadeDeliveryDto,
+} from './dto/aade-dispatch.dto';
 import { CompleteDispatchNoteDto } from './dto/complete-dispatch-note.dto';
 import { CreateDispatchNoteDto, UpdateDispatchNoteDto } from './dto/create-dispatch-note.dto';
 import { CreateInventoryItemDto, UpdateInventoryItemDto } from './dto/create-inventory-item.dto';
@@ -112,6 +117,54 @@ export class DigitalMovementController {
     @Body() dto: UpdateDispatchNoteDto,
   ) {
     return this.service.updateDispatchNote(tenant, id, dto);
+  }
+
+  @Post('dispatch-notes/:id/aade/transmit')
+  @Roles(...OFFICE_WRITE_ROLES)
+  transmitToAade(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.service.transmitToAade(tenant, id);
+  }
+
+  @Post('dispatch-notes/:id/aade/register-transfer')
+  @Roles(...OFFICE_WRITE_ROLES)
+  registerAadeTransfer(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: RegisterAadeTransferDto,
+  ) {
+    return this.service.registerAadeTransfer(tenant, id, dto);
+  }
+
+  @Post('dispatch-notes/:id/aade/confirm')
+  @Roles(...OFFICE_WRITE_ROLES)
+  confirmAadeDelivery(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: ConfirmAadeDeliveryDto,
+  ) {
+    return this.service.confirmAadeDelivery(tenant, id, dto);
+  }
+
+  @Post('dispatch-notes/:id/aade/reject')
+  @Roles(...OFFICE_WRITE_ROLES)
+  rejectAadeDelivery(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: RejectAadeDeliveryDto,
+  ) {
+    return this.service.rejectAadeDelivery(tenant, id, dto);
+  }
+
+  @Post('dispatch-notes/:id/aade/cancel')
+  @Roles(...OFFICE_WRITE_ROLES)
+  cancelAtAade(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.service.cancelAtAade(tenant, id);
+  }
+
+  @Post('dispatch-notes/:id/aade/sync-status')
+  @Roles(...OFFICE_WRITE_ROLES)
+  syncAadeStatus(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.service.syncAadeStatus(tenant, id);
   }
 
   @Post('dispatch-notes/:id/issue')

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-08-23
+
+- Added annual AADE certificate workflows for payroll, business-activity fees and
+  dividends/interest/royalties, with official 2025 fixed-width ZIP output,
+  payroll/monthly-return reconciliation, protocols, amendments and locking.
+- Added encrypted off-site restic backups for database and supporting documents,
+  daily/weekly/monthly retention, failure webhooks, status monitoring and a scheduled
+  Windows restore drill that restores the remote snapshot into isolated MySQL and writes a report.
+- Added VIES F4/F5 generation, EU VAT validation, books/myDATA reconciliation,
+  official XML output, protocols, amendments and locking.
+- Added year-versioned Intrastat thresholds, arrivals/dispatches, official 87-character
+  records, reconciliation, protocols, amendments and locking.
+- Added a versioned special-collective-agreement registry with KAD/specialty matching,
+  wage and allowance rules, validity history and payroll-contract legal-base snapshots.
+- Added real AADE digital-delivery-note transmission and lifecycle operations for
+  MARK/UID/QR, transfer registration, delivery outcome, rejection, cancellation and status sync.
+- Added client applicability switches, a unified compliance workspace, expanded backup
+  monitoring and Windows Docker configuration entry points for off-site backup and restore drills.
+
 ## 0.2.0 - 2026-07-29
 
 - Added production payroll calculations for night work, Sundays/holidays,

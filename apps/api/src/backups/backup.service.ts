@@ -31,6 +31,14 @@ export interface BackupOperationsStatus {
   maxAgeHours: number;
   database: BackupArtifactStatus;
   supportingDocuments: BackupArtifactStatus;
+  offsite: {
+    configured: boolean;
+    status: 'DISABLED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'UNKNOWN';
+    updatedAt: Date | null;
+    snapshotId: string | null;
+    repository: string | null;
+    fresh: boolean;
+  };
 }
 
 @Injectable()
@@ -57,17 +65,64 @@ export class BackupService {
     const supportingDocuments = await this.latestArtifactStatus(
       entries.filter((fileName) => isSafeSupportingDocumentsArchive(fileName)),
     );
+    const offsite = await this.offsiteStatus();
 
     return {
       healthy:
         database.fresh &&
         database.checksumAvailable &&
         supportingDocuments.fresh &&
-        supportingDocuments.checksumAvailable,
+        supportingDocuments.checksumAvailable &&
+        (!offsite.configured || (offsite.status === 'SUCCESS' && offsite.fresh)),
       maxAgeHours: this.maxAgeHours,
       database,
       supportingDocuments,
+      offsite,
     };
+  }
+
+  private async offsiteStatus(): Promise<BackupOperationsStatus['offsite']> {
+    try {
+      const raw = await readFile(join(this.backupDir, 'offsite-backup.status'), 'utf8');
+      const values = Object.fromEntries(
+        raw
+          .split(/\r?\n/)
+          .filter((line) => line.includes('='))
+          .map((line) => {
+            const separator = line.indexOf('=');
+            return [line.slice(0, separator), line.slice(separator + 1)];
+          }),
+      );
+      const statusValues = new Set(['DISABLED', 'RUNNING', 'SUCCESS', 'FAILED']);
+      const status = statusValues.has(values.status) ? values.status : 'UNKNOWN';
+      const dateValue =
+        values.completed_at_utc ??
+        values.failed_at_utc ??
+        values.started_at_utc ??
+        values.updated_at_utc;
+      const updatedAt =
+        dateValue && !Number.isNaN(Date.parse(dateValue)) ? new Date(dateValue) : null;
+      const fresh = Boolean(
+        updatedAt && Date.now() - updatedAt.getTime() <= this.maxAgeHours * 3_600_000,
+      );
+      return {
+        configured: values.configured === 'true',
+        status: status as BackupOperationsStatus['offsite']['status'],
+        updatedAt,
+        snapshotId: values.snapshot_id || null,
+        repository: values.repository || null,
+        fresh,
+      };
+    } catch {
+      return {
+        configured: false,
+        status: 'UNKNOWN',
+        updatedAt: null,
+        snapshotId: null,
+        repository: null,
+        fresh: false,
+      };
+    }
   }
 
   async list(): Promise<BackupFileInfo[]> {

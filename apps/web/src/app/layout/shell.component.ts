@@ -80,6 +80,10 @@ import { ACCOUNTING_CONTROL_ROLES, ADMIN_ROLES } from '../core/auth/user-roles';
             <span class="material-symbols-outlined">percent</span>
             <span>Παρακρατούμενοι</span>
           </a>
+          <a class="nav-item" routerLink="/compliance" routerLinkActive="active">
+            <span class="material-symbols-outlined">fact_check</span>
+            <span>Βεβαιώσεις / VIES / Intrastat</span>
+          </a>
           <div class="nav-label">Εργαλεία γραφείου</div>
           <a class="nav-item" routerLink="/digital-movement" routerLinkActive="active">
             <span class="material-symbols-outlined">local_shipping</span>

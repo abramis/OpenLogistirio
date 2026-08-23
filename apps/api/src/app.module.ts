@@ -26,6 +26,9 @@ import { SetupModule } from './setup/setup.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { AnnualTaxModule } from './annual-tax/annual-tax.module';
 import { WithholdingTaxModule } from './withholding-tax/withholding-tax.module';
+import { AnnualCertificatesModule } from './annual-certificates/annual-certificates.module';
+import { EuComplianceModule } from './eu-compliance/eu-compliance.module';
+import { CollectiveAgreementsModule } from './collective-agreements/collective-agreements.module';
 
 @Module({
   imports: [
@@ -66,6 +69,9 @@ import { WithholdingTaxModule } from './withholding-tax/withholding-tax.module';
     PayrollModule,
     AnnualTaxModule,
     WithholdingTaxModule,
+    AnnualCertificatesModule,
+    EuComplianceModule,
+    CollectiveAgreementsModule,
   ],
 })
 export class AppModule {}
