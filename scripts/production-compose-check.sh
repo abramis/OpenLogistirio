@@ -88,6 +88,7 @@ fi
 docker pull mysql:8.4
 docker pull redis:7.4-alpine
 docker pull alpine:3.20
+docker pull restic/restic:0.18.0
 
 docker compose --env-file "$env_file" -f "$compose_file" -p "$project" config --quiet
 docker compose --env-file "$env_file" -f "$compose_file" -p "$project" \
